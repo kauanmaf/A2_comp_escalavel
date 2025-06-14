@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  spark-master:
+    image: bitnami/spark:3.5.1
+    container_name: spark-master
+    ports:
+      - "8080:8080" # UI do Spark Master
+      - "7077:7077" # Porta RPC do Spark Master
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_DIRS=/tmp/spark-temp
+      - SPARK_LOG_DIR=/opt/bitnami/spark/logs
+      - IVY_HOME=/tmp/.ivy2 # Manter este
+    volumes:
+      - spark_master_data:/tmp/spark-temp
+      - spark_master_logs:/opt/bitnami/spark/logs
+
+  spark-worker:
+    image: bitnami/spark:3.5.1
+    container_name: spark-worker
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_CORES=1
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_DIRS=/tmp/spark-temp
+      - SPARK_LOG_DIR=/opt/bitnami/spark/logs
+      - IVY_HOME=/tmp/.ivy2 # Manter este
+    volumes:
+      - spark_worker_data:/tmp/spark-temp
+      - spark_worker_logs:/opt/bitnami/spark/logs
+
+  spark-app:
+    build: .
+    container_name: spark-app
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      # Remova ou comente as linhas abaixo:
+      # - IVY_HOME=/tmp/.ivy2
+      # - HOME=/tmp
+
+volumes:
+  spark_master_data:
+  spark_master_logs:
+  spark_worker_data:
+  spark_worker_logs:
