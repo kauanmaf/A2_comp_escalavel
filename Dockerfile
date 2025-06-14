@@ -1,6 +1,4 @@
-# Usa uma imagem base oficial do Spark.
-# É crucial escolher uma imagem que seja compatível com a sua versão de Python
-# e tenha o Java (JRE) necessário.
+# Usa uma imagem base oficial do Spark
 FROM bitnami/spark:3.5.1
 
 # Define o diretório de trabalho dentro do contêiner
@@ -9,18 +7,29 @@ WORKDIR /app
 # Define um diretório de cache para o uv que o usuário do contêiner tem permissão de escrita
 ENV UV_CACHE_DIR=/tmp/uv_cache
 
-# Copia os arquivos de configuração do Poetry e de bloqueio de dependências
+# Instalação de Cron
+USER root
+RUN mkdir -p /var/lib/apt/lists/partial && \
+    apt-get update && \
+    apt-get install -y cron && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copia os arquivos de configuração do gerenciador de dependências
 COPY pyproject.toml uv.lock ./
 
-# Instala as dependências usando uv
+# Instala o 'uv' e usa 'uv sync' para instalar todas as dependências Python
 RUN pip install uv && python -m uv sync
 
-# COPIE O SEU SCRIPT ENTRYPOINT.SH AQUI!
-COPY entrypoint.sh ./
+# Copia o script que submeterá o job Spark
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
-# Copia seu script Python principal
+# Copia o arquivo de configuração do cronjob
+COPY my_cronjob /etc/cron.d/my_cronjob
+RUN chmod 0644 /etc/cron.d/my_cronjob
+
+# Copia o script Python principal que contém a lógica do job Spark
 COPY main.py ./
 
-# O comando de entrada padrão para o contêiner.
-# Este será o script que você usará para submeter seu job Spark.
-ENTRYPOINT ["/app/entrypoint.sh"]
+# Define o comando de entrada principal para o contêiner
+ENTRYPOINT ["cron", "-f"]

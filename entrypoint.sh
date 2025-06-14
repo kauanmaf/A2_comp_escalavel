@@ -1,8 +1,6 @@
 #!/bin/bash
 
-echo "Submitting Spark job..."
-
-sleep 20 # Manter o sleep para garantir que o master/worker estejam prontos
+echo "$(date): Submitting Spark job..."
 
 /opt/bitnami/spark/bin/spark-submit \
     --master spark://spark-master:7077 \
@@ -10,4 +8,8 @@ sleep 20 # Manter o sleep para garantir que o master/worker estejam prontos
     --conf spark.jars.ivy=/tmp/.ivy2_cache_app \
     /app/main.py
 
-echo "Spark job submitted. Exiting entrypoint script."
+if [ $? -eq 0 ]; then
+    echo "$(date): Spark job submitted successfully."
+else
+    echo "$(date): Spark job submission FAILED!"
+fi

@@ -1,6 +1,12 @@
 version: '3.8'
 
 services:
+  redis:
+    image: redis:7.2.4-alpine
+    container_name: redis-server
+    ports:
+      - "6379:6379"
+
   spark-master:
     image: bitnami/spark:3.5.1
     container_name: spark-master
@@ -13,16 +19,14 @@ services:
       - SPARK_RPC_ENCRYPTION_ENABLED=no
       - SPARK_LOCAL_DIRS=/tmp/spark-temp
       - SPARK_LOG_DIR=/opt/bitnami/spark/logs
-      - IVY_HOME=/tmp/.ivy2 # Manter este
-    volumes:
-      - spark_master_data:/tmp/spark-temp
-      - spark_master_logs:/opt/bitnami/spark/logs
+      - IVY_HOME=/tmp/.ivy2
 
   spark-worker:
     image: bitnami/spark:3.5.1
     container_name: spark-worker
     depends_on:
       - spark-master
+      - redis # Adiciona dependência no Redis
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
@@ -32,24 +36,17 @@ services:
       - SPARK_RPC_ENCRYPTION_ENABLED=no
       - SPARK_LOCAL_DIRS=/tmp/spark-temp
       - SPARK_LOG_DIR=/opt/bitnami/spark/logs
-      - IVY_HOME=/tmp/.ivy2 # Manter este
-    volumes:
-      - spark_worker_data:/tmp/spark-temp
-      - spark_worker_logs:/opt/bitnami/spark/logs
+      - IVY_HOME=/tmp/.ivy2
 
   spark-app:
     build: .
     container_name: spark-app
     depends_on:
       - spark-master
+      - redis # Depende do Redis para leitura
     environment:
       - SPARK_MASTER_URL=spark://spark-master:7077
-      # Remova ou comente as linhas abaixo:
-      # - IVY_HOME=/tmp/.ivy2
-      # - HOME=/tmp
-
-volumes:
-  spark_master_data:
-  spark_master_logs:
-  spark_worker_data:
-  spark_worker_logs:
+      - HOME=/tmp
+      - REDIS_HOST=redis-server # Para o main.py
+      - REDIS_PORT=6379 # Para o main.py
+      - REDIS_LIST_KEY=raw_travel_data_list # Chave da lista Redis
