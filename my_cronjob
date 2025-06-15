@@ -1,1 +1,2 @@
-*/1 * * * * /app/entrypoint.sh >> /var/log/spark_job.log 2>&1
+*/1 * * * * /bin/bash -c "/app/entrypoint.sh >> /var/log/spark_job.log 2>&1"
+

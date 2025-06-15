@@ -26,7 +26,7 @@ services:
     container_name: spark-worker
     depends_on:
       - spark-master
-      - redis # Adiciona dependência no Redis
+      - redis
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
@@ -43,10 +43,34 @@ services:
     container_name: spark-app
     depends_on:
       - spark-master
-      - redis # Depende do Redis para leitura
+      - redis
+    ports:
+      - "5000:5000" # Porta do Flask
     environment:
       - SPARK_MASTER_URL=spark://spark-master:7077
       - HOME=/tmp
-      - REDIS_HOST=redis-server # Para o main.py
-      - REDIS_PORT=6379 # Para o main.py
-      - REDIS_LIST_KEY=raw_travel_data_list # Chave da lista Redis
+      - REDIS_HOST=redis-server
+      - REDIS_PORT=6379
+
+  # Serviço de Monitoramento de Listas Redis
+  redis-list-monitor:
+    build:
+      context: ./redis_monitor
+      dockerfile: Dockerfile_Monitor
+    container_name: redis-list-monitor
+    depends_on:
+      - redis
+      - spark-app
+    environment:
+      REDIS_HOST: redis-server
+      REDIS_PORT: 6379
+      SPARK_APP_URL: http://spark-app:5000/trigger-spark-job
+      MONITOR_INTERVAL_SECONDS: 10
+      LIST_THRESHOLDS_JSON: |
+          {"raw_travel_data_list": 50, "raw_flights": 50}
+
+volumes:
+  spark_master_data:
+  spark_master_logs:
+  spark_worker_data:
+  spark_worker_logs:
