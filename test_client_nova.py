@@ -1,63 +1,3 @@
-# test_client.py
-import redis
-import json
-import time
-import datetime
-from faker import Faker
-import random
-
-# Configurar Faker para português
-faker = Faker('pt_BR')
-
-REDIS_HOST = 'localhost'
-REDIS_PORT = 6379
-REDIS_LIST_KEY_FLIGHTS = 'raw_flights'
-REDIS_LIST_KEY_HOTELS = 'raw_hotels'
-
-r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
-
-print(f"Conectando ao Redis em {REDIS_HOST}:{REDIS_PORT} para adicionar às listas...")
-
-def add_data_to_list(list_key, company_id, event_type, data_payload):
-    message = {
-        "company_id": company_id,
-        "event_type": event_type,
-        "data": json.dumps(data_payload),
-        "timestamp": datetime.datetime.now().isoformat()
-    }
-    r.rpush(list_key, json.dumps(message))
-    print(f"Adicionado à lista Redis '{list_key}': {message['event_type']} para {company_id}")
-
-def generate_common_time_fields():
-    random_datetime = faker.date_time_this_month()
-    hora_str = f"{random.randint(0, 23):02d}:{random.randint(0, 59):02d}"
-    return {
-        "ano": 2025,
-        "mes": random_datetime.month,
-        "dia": random_datetime.day,
-        "hora": hora_str
-    }
-
-def generate_flight_data():
-    base_data = {
-        "flight_id": f"FL{random.randint(100, 999)}",
-        "origin": faker.city(),
-        "dest": faker.city(),
-        "price": round(random.uniform(300.0, 2000.0), 2)
-    }
-    base_data.update(generate_common_time_fields())
-    return base_data
-
-def generate_hotel_data():
-    base_data = {
-        "hotel_id": f"HTL{random.randint(100, 999)}",
-        "city": faker.city(),
-        "stars": random.randint(1, 5),
-        "price": round(random.uniform(150.0, 3000.0), 2)
-    }
-    base_data.update(generate_common_time_fields())
-    return base_data
-
 import redis
 import json
 import random
@@ -76,7 +16,16 @@ fake = Faker('pt_BR')
 random.seed(42)
 
 companies = ["CiaViagemA", "CiaVoosB", "AgenciaTurC"]
-cidades = [ ... ]  # sua lista de cidades aqui
+cidades = [
+    "São Paulo", "Rio de Janeiro", "Brasília", "Belo Horizonte", "Salvador",
+    "Recife", "Fortaleza", "Curitiba", "Porto Alegre", "Belém", "Manaus",
+    "Florianópolis", "Goiânia", "Natal", "Maceió", "João Pessoa", "Aracaju",
+    "Vitória", "Cuiabá", "Campo Grande", "São Luís", "Teresina", "Palmas",
+    "Rio Branco", "Macapá", "Boa Vista", "Porto Velho", "Nova York", "Miami",
+    "Los Angeles", "Londres", "Paris", "Tóquio", "Pequim", "Dubai", "Roma",
+    "Madri", "Lisboa", "Amsterdã", "Frankfurt", "Toronto", "Buenos Aires",
+    "Santiago", "Lima", "Cidade do México", "Bogotá"
+]
 
 def add_data_to_list(redis_list, company_id, event_type, data_payload):
     message = {

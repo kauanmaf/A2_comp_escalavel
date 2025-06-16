@@ -8,7 +8,6 @@ services:
 
   spark-master:
     image: bitnami/spark:3.5.1
-    # command: /opt/bitnami/spark/bin/spark-submit-runner.sh /opt/bitnami/spark/bin/spark-class org.apache.spark.deploy.master.Master
     ports:
       - "8080:8080" # Spark Master Web UI
       - "7077:7077" # Spark Master internal communication
@@ -23,11 +22,59 @@ services:
     networks:
       - a2_comp_escalavel_default
 
+  # PostgreSQL para Dados Totais
+  postgres-data:
+    image: postgres:16 # Usando a versão 16, você pode mudar se precisar
+    container_name: postgres-data-db
+    restart: always
+    environment:
+      POSTGRES_DB: dados_gerais # Nome do banco de dados principal
+      POSTGRES_USER: emap
+      POSTGRES_PASSWORD: emap123
+    volumes:
+      - ./pgdata_total:/var/lib/postgresql/data # Persiste os dados em um diretório local
+      # Opcional: para inicializar o esquema e dados na primeira inicialização
+      # - ./init_data.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432" # Mapeia a porta 5432 do container para a sua máquina
+    healthcheck: # Garante que o DB esteja pronto antes de outros serviços o usarem
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - a2_comp_escalavel_default
+
+  # PostgreSQL para Estatísticas
+  postgres-stats:
+    image: postgres:16
+    container_name: postgres-stats-db
+    restart: always
+    environment:
+      POSTGRES_DB: dados_stats # Nome do banco de dados de estatísticas
+      POSTGRES_USER: emap
+      POSTGRES_PASSWORD: emap123
+    volumes:
+      - ./pgdata_stats:/var/lib/postgresql/data # Volume dedicado para estatísticas
+      # Opcional: para inicializar o esquema e dados na primeira inicialização
+      # - ./init_stats.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5433:5432" # Mapeia para a porta 5433 na sua máquina (evita conflito com 5432)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - a2_comp_escalavel_default
+
   spark-worker:
     image: bitnami/spark:3.5.1
-    # command: /opt/bitnami/spark/bin/spark-submit-runner.sh /opt/bitnami/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     depends_on:
       - spark-master
+      - redis-server
+      - postgres-data # Adicionada dependência
+      - postgres-stats # Adicionada dependência
     environment:
       - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_WORKER_WEBUI_PORT=8081
@@ -47,6 +94,8 @@ services:
     depends_on:
       - spark-master
       - redis-server
+      - postgres-data # Adicionada dependência
+      - postgres-stats # Adicionada dependência
     environment:
       SPARK_MASTER_URL: spark://spark-master:7077
       REDIS_HOST: redis-server
@@ -54,7 +103,18 @@ services:
       MONITOR_INTERVAL_SECONDS: 10
       LIST_THRESHOLDS_JSON: |
           {"raw_travel_data_list": 50, "raw_flights": 50}
-
+      # Variáveis de ambiente para o PostgreSQL de Dados Totais
+      PG_DATA_HOST: postgres-data
+      PG_DATA_PORT: 5432
+      PG_DATA_DB: dados_gerais
+      PG_DATA_USER: emap
+      PG_DATA_PASSWORD: emap123
+      # Variáveis de ambiente para o PostgreSQL de Estatísticas
+      PG_STATS_HOST: postgres-stats
+      PG_STATS_PORT: 5432 # A porta interna do container é sempre 5432
+      PG_STATS_DB: dados_stats
+      PG_STATS_USER: emap
+      PG_STATS_PASSWORD: emap123
     entrypoint: ["/opt/bitnami/python/bin/python", "main.py"]
     networks:
       - a2_comp_escalavel_default
@@ -62,31 +122,7 @@ services:
 networks:
   a2_comp_escalavel_default:
 
-  # spark-app:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   depends_on:
-  #     - spark-master
-  #     - redis-server
-  #   ports:
-  #     - "5000:5000"
-  #   environment:
-  #     - SPARK_MASTER_URL=spark://spark-master:7077
-  #     - REDIS_HOST=redis-server
-  #   networks:
-  #     - a2_comp_escalavel_default
-
-  # redis-list-monitor:
-  #   build: ./redismonitor
-  #   depends_on:
-  #     - redis-server
-  #     - spark-app
-  #   environment:
-  #     - REDIS_HOST=redis-server
-  #     - REDIS_PORT=6379
-  #     - SPARK_APP_URL=http://spark-app:5000/trigger-spark-job
-  #     - MONITOR_INTERVAL_SECONDS=10
-  #     - LIST_THRESHOLDS_JSON='{"raw_travel_data_list": 50, "raw_flights": 50}'
-  #   networks:
-  #     - a2_comp_escalavel_default
+# Volumes para persistência dos dados dos bancos de dados
+volumes:
+  pgdata_total: # Volume para dados totais
+  pgdata_stats: # Volume para dados de estatísticas
