@@ -1,3 +1,74 @@
+# Bytecode do Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Arquivos de virtualenv
+env/
+venv/
+ENV/
+.venv/
+.Python
+
+# Cache do pip
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Distribuição e builds
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Testes
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+
+# Arquivos de logs e temporários
+*.log
+*.tmp
+*.bak
+*.swp
+.DS_Store
+Thumbs.db
+
+# mypy e outros linters
+.mypy_cache/
+.dmypy.json
+.pyre/
+.pytype/
+
+# arquivos do docker (se não quiser versionar)
+**/.docker/
+docker-compose.override.yml
+
 venv/
 pgdata_stats/
 pgdata_total/
