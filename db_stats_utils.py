@@ -1,7 +1,6 @@
 import os
 import psycopg2
 from psycopg2 import sql
-import psycopg2.extras
 
 
 def get_pg_connection():
@@ -75,11 +74,11 @@ TABLE_CONFIG = {
         "value_columns": ["sum_valor"],
     },
     "stats_city_hotel": {"key_columns": ["cidade"], "value_columns": ["sum_valor"]},
-    "stats_month_voo": {
+    "stats_month_voos": {
         "key_columns": ["cidade_destino", "mes_reserva"],
         "value_columns": ["sum_valor"],
     },
-    "stats_city_voo": {
+    "stats_city_voos": {
         "key_columns": ["cidade_destino"],
         "value_columns": ["sum_valor"],
     },
@@ -87,9 +86,17 @@ TABLE_CONFIG = {
         "key_columns": ["mes_reserva"],
         "value_columns": ["total_valor"],
     },
+    "stats_ticket_medio": {
+        "key_columns": ["cidade_destino"],
+        "value_columns": ["sum_valor", "num_transacoes"],
+    },
     "stats_stars_hotel": {
         "key_columns": ["estrelas"],
         "value_columns": ["num_reservas"],
+    },
+    "stats_estrelas_medias_mes": {
+        "key_columns": ["mes_reserva"],
+        "value_columns": ["sum_estrelas", "num_reservas"],
     },
     "stats_month_sp_voos": {
         "key_columns": ["mes"],
@@ -124,7 +131,7 @@ def save_stats_dataframe(df, table_name):
                     value_columns=config["value_columns"],
                     row=data,
                 )
-            
+
             conn.commit()
         except Exception as e:
             conn.rollback()
