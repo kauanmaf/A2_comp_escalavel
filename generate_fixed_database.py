@@ -68,7 +68,6 @@ class DatabaseGenerator:
 
         self.hoteis_df = pd.DataFrame(hoteis_data)
         print(f"Gerados {len(self.hoteis_df)} hotéis em {len(CIDADES_BRASILEIRAS)} cidades")
-        print("Distribuição de estrelas aplicada: 1★=10%, 2★=15%, 3★=35%, 4★=25%, 5★=15%")
         return self.hoteis_df
 
     def is_weekend(self, date: datetime) -> bool:
