@@ -71,3 +71,41 @@ def groupby_month(df_stats):
     )
 
     return df_grouped_month
+
+def groupby_stars_hotels(df_joined_hotels):
+    df_grouped_stars = df_joined_hotels.groupBy(
+        "company_id",
+        "estrelas",
+    ).agg(
+        count("*").alias("num_reservas")
+    ).orderBy(
+        "company_id", "estrelas"
+    )
+
+    return df_grouped_stars
+
+def filter_sao_paulo_flights(df_joined_flights: DataFrame) -> DataFrame:
+    # Filter for flights where either 'cidade_origem' or 'cidade_destino' is 'São Paulo'
+    df_sp_relevant_flights = df_joined_flights.filter(
+        (col("cidade_origem") == "São Paulo") | (col("cidade_destino") == "São Paulo")
+    )
+    return df_sp_relevant_flights
+
+def groupby_month_sp_flights(df_sp_relevant_flights: DataFrame) -> DataFrame:
+    df_with_month = df_sp_relevant_flights.withColumn(
+        "mes", month(col("data_reserva"))
+    )
+
+    # Group by year_month and company_id to count total flights for the month
+    return df_with_month.groupBy("mes", "company_id") \
+                        .agg(count("*").alias("num_voos_reservados"))
+
+def groupby_day_sp_flights(df_sp_relevant_flights: DataFrame) -> DataFrame:
+    # Ensure 'event_date' is derived from 'data_reserva' for grouping
+    df_with_event_date = df_sp_relevant_flights.withColumn(
+        "data_reserva", to_date(col("data_reserva"))
+    )
+
+    # Group by event_date and company_id to count total flights
+    return df_with_event_date.groupBy("data_reserva", "company_id") \
+                            .agg(count("*").alias("num_reservas"))

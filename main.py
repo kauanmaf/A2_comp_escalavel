@@ -192,6 +192,14 @@ if __name__ == "__main__":
                     stats_city_voos = pf.groupby_city_flights(all_stats_voos)
                     stats_month_voos = pf.groupby_month(all_stats_voos)
 
+                    # TODO: Junção das duas
+
+                    stats_stars_hotel = pf.groupby_stars_hotels(joined_hotel)
+
+                    filtered_sp_voos = pf.filter_sao_paulo_flights(joined_voos)
+                    stats_month_sp_voos = pf.groupby_month_sp_flights(filtered_sp_voos)
+                    stats_day_sp_voos = pf.groupby_day_sp_flights(filtered_sp_voos)
+
                     print(f"Estatísticas de faturamento de hotéis por mês e companhia:")
                     stats_month_hotel.show()
                     print(f"Estatísticas de faturamento de hotéis por cidade e companhia:")
@@ -200,6 +208,12 @@ if __name__ == "__main__":
                     stats_month_hotel.show()
                     print(f"Estatísticas de faturamento de voos por cidade e companhia:")
                     stats_city_hotel.show()
+                    print(f"Estatísticas de reservas de hotel por estrela e companhia:")
+                    stats_stars_hotel.show()
+                    print(f"Estatísticas de voos de SP reservados por mês e companhia:")
+                    stats_month_sp_voos.show()
+                    print(f"Estatísticas de reservas de voos de SP por dia e companhia:")
+                    stats_day_sp_voos.show()
 
                     # Remove os dados que acabaram de ser processados da lista Redis
                     r_client.ltrim("raw_hotels", list_size, -1)
