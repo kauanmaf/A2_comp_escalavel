@@ -150,56 +150,40 @@ if __name__ == "__main__":
                     df_raw_redis_message_voos = spark.createDataFrame(parsed_data_voos, schema=raw_redis_message_schema)
                     
                     print(f"DataFrames raw criados")
-                    # df_raw_redis_message_hoteis.show(truncate=False)
-                    # df_raw_redis_message_voos.show(truncate=False)
 
                     # Parseia o JSON na coluna 'data' usando o schema de payload
                     df_hoteis = df_raw_redis_message_hoteis.withColumn(
                         "parsed_payload", from_json(col("data"), hotel_data_payload_schema)
                     ).select(
                         col("company_id"),
-                        col("timestamp").alias("event_timestamp"), # Timestamp da chegada do evento no Redis
+                        col("timestamp").alias("event_timestamp"),
                         col("parsed_payload.id_hotel").alias("id_hotel"),
                         col("parsed_payload.valor").alias("valor"),
-                        col("parsed_payload.data_reservada").alias("data_reservada"), # A data ainda é string aqui
-                        col("parsed_payload.data_reserva").alias("data_reserva"), # A data ainda é string aqui
-                        col("parsed_payload.id_reserva_hotel").alias("id_reserva_hotel"), # A data ainda é string aqui
+                        col("parsed_payload.data_reservada").alias("data_reservada"),
+                        col("parsed_payload.data_reserva").alias("data_reserva"),
+                        col("parsed_payload.id_reserva_hotel").alias("id_reserva_hotel"),
                     )
                     df_voos = df_raw_redis_message_voos.withColumn(
                         "parsed_payload", from_json(col("data"), flight_data_payload_schema)
                     ).select(
                         col("company_id"),
-                        col("timestamp").alias("event_timestamp"), # Timestamp da chegada do evento no Redis
+                        col("timestamp").alias("event_timestamp"),
                         col("parsed_payload.id_voo").alias("id_voo"),
                         col("parsed_payload.valor").alias("valor"),
-                        col("parsed_payload.id_reserva_voo").alias("id_reserva_voo"), # A data ainda é string aqui
-                        col("parsed_payload.data_reserva").alias("data_reserva"), # A data ainda é string aqui
+                        col("parsed_payload.id_reserva_voo").alias("id_reserva_voo"),
+                        col("parsed_payload.data_reserva").alias("data_reserva"),
                     )
-
-                    # print("*** df_hoteis ***")
-                    # df_hoteis.show()
 
                     # Converte a coluna 'data_reservada' para TimestampType
                     df_hoteis = df_hoteis.withColumn(
                         "data_reservada", to_timestamp(col("data_reservada")))
                     df_hoteis = df_hoteis.withColumn(
-                        "data_reserva", to_timestamp(col("data_reserva")))
-                    
-                    # print("*** df_hoteis ***")
-                    # df_hoteis.show()        
-        
+                        "data_reserva", to_timestamp(col("data_reserva")))     
                     df_voos = df_voos.withColumn(
                         "data_reserva", to_timestamp(col("data_reserva")))
 
                     joined_hotel = pf.join(df_hoteis_master, df_hoteis, "id_hotel")
-
-                    # print("*** joined_hotel ***")
-                    # joined_hotel.show()
-
                     all_stats_hotel = pf.groupby_stats_hotels(joined_hotel)
-
-                    # print("*** all_stats_hotel ***")
-                    # all_stats_hotel.show()
 
                     stats_city_hotel = pf.groupby_city_hotels(all_stats_hotel)
                     stats_month_hotel = pf.groupby_month_hotels(all_stats_hotel)
@@ -208,11 +192,6 @@ if __name__ == "__main__":
                     stats_month_hotel.show()
                     print(f"Estatísticas de faturamento por cidade e companhia:")
                     stats_city_hotel.show()
-
-                    # Armazenar estatísticas
-                    # output_stats_path = f"/tmp/processed_stats_batch/{list_key}"
-                    # stats_city_hotel.write.mode("append").parquet(output_stats_path)
-                    # print(f"Estatísticas de reservas de voos salvas em: {output_stats_path}")
 
                     # Remove os dados que acabaram de ser processados da lista Redis
                     r_client.ltrim("raw_hotels", list_size, -1)
