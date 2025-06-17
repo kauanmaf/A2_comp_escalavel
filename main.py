@@ -201,12 +201,10 @@ if __name__ == "__main__":
                     joined_faturamentos = pf.join_profits(stats_month_hotel, stats_month_voos)
                     stats_faturamentos_totais = pf.sum_profits(joined_faturamentos)
 
-                    # grouped_city_hotel.show()
-                    # grouped_city_voos.show()
-
                     stats_ticket_medio = pf.average_profits(grouped_city_hotel, grouped_city_voos)
 
                     stats_stars_hotel = pf.groupby_stars_hotels(joined_hotel)
+                    stats_estrelas_medias_mes = pf.groupby_month_stars(joined_hotel)
 
                     filtered_sp_voos = pf.filter_sao_paulo_flights(joined_voos)
                     stats_month_sp_voos = pf.groupby_month_sp_flights(filtered_sp_voos)
@@ -226,6 +224,8 @@ if __name__ == "__main__":
                     stats_ticket_medio.show()
                     print(f"Estatísticas de reservas de hotel por estrela e companhia:")
                     stats_stars_hotel.show()
+                    print(f"Estatísticas de estrela média dos hotéis por mês e companhia:")
+                    stats_estrelas_medias_mes.show()
                     print(f"Estatísticas de voos de SP reservados por mês e companhia:")
                     stats_month_sp_voos.show()
                     print(f"Estatísticas de reservas de voos de SP por dia e companhia:")

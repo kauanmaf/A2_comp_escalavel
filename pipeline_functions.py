@@ -127,6 +127,23 @@ def groupby_stars_hotels(df_joined_hotels):
 
     return df_grouped_stars
 
+def groupby_month_stars(df_joined_hotels):
+    df_with_month = df_joined_hotels.withColumn(
+        "mes_reserva", month(col("data_reserva"))
+    )
+
+    df_grouped_month_stars = df_with_month.groupBy(
+        "company_id",
+        "mes_reserva"
+    ).agg(
+        sum("estrelas").alias("sum_estrelas"),
+        count("*").alias("num_reservas")
+    ).orderBy(
+        "company_id", "mes_reserva"
+    )
+
+    return df_grouped_month_stars
+
 def filter_sao_paulo_flights(df_joined_flights: DataFrame) -> DataFrame:
     # Filter for flights where either 'cidade_origem' or 'cidade_destino' is 'São Paulo'
     df_sp_relevant_flights = df_joined_flights.filter(
