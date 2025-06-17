@@ -1,49 +1,96 @@
 # main.py
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col, count, sum
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType
+from pyspark.sql.functions import from_json, col, count, sum, to_timestamp 
+from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType, IntegerType
 import os
 import redis
 import json
 import time
 import datetime
+import pipeline_functions as pf
 
-# Definindo os esquemas para os dados aninhados
-flight_data_schema = StructType([
-    StructField("flight_id", StringType(), True),
-    StructField("origin", StringType(), True),
-    StructField("dest", StringType(), True),
-    StructField("price", DoubleType(), True)
+# Definindo os esquemas para os dados aninhados (PAYLOADS DO REDIS)
+# Estes são os schemas para o CONTEÚDO da coluna 'data'
+flight_data_payload_schema = StructType([
+    StructField("id_voo", IntegerType(), True), # Ajustado para IntegerType
+    StructField("id_reserva_voo", IntegerType(), True), # Ajustado para IntegerType
+    StructField("valor", DoubleType(), True),
+    StructField("data_reserva", StringType(), True)
 ])
 
-hotel_data_schema = StructType([
-    StructField("hotel_id", StringType(), True),
-    StructField("city", StringType(), True),
-    StructField("nights", DoubleType(), True),
-    StructField("cost", DoubleType(), True)
+hotel_data_payload_schema = StructType([
+    StructField("id_reserva_hotel", IntegerType(), True), # Ajustado para IntegerType
+    StructField("id_hotel", IntegerType(), True), # Ajustado para IntegerType
+    StructField("valor", DoubleType(), True),
+    StructField("data_reservada", StringType(), True), # A data dentro do JSON ainda é string
+    StructField("data_reserva", StringType(), True) # A data dentro do JSON ainda é string
 ])
 
-# Definindo o esquema para os dados brutos recebidos
-raw_data_schema = StructType([
+# Definindo o esquema para os dados brutos recebidos DO REDIS (estrutura da MENSAGEM)
+raw_redis_message_schema = StructType([
     StructField("company_id", StringType(), True),
-    StructField("event_type", StringType(), True),
-    StructField("data", StringType(), True),
-    StructField("timestamp", TimestampType(), True)
+    StructField("data", StringType(), True), # 'data' é uma STRING JSON
+    StructField("timestamp", TimestampType(), True) # 'timestamp' já vem como TimestampType
 ])
+
+# Esquema para a base de Hoteis (Master Data)
+hoteis_master_schema = StructType([
+    StructField("id_hotel", IntegerType(), False),
+    StructField("cidade", StringType(), False),
+    StructField("estrelas", IntegerType(), False)
+])
+
+# Esquema para a base de Voos (Master Data)
+voos_master_schema = StructType([
+    StructField("id_voo", IntegerType(), False),
+    StructField("cidade_ida", StringType(), False),
+    StructField("cidade_volta", StringType(), False),
+    StructField("data", StringType(), False) # Data do voo como string (será convertida depois se precisar de Timestamp)
+])
+
+# --- DADOS FIXOS SIMULANDO AS TABELAS DO BANCO ---
+DADOS_VOOS_FIXOS = [
+    {"id_voo": 1, "cidade_ida": "São Paulo", "cidade_volta": "Rio de Janeiro", "data": "2025-10-15T10:00:00"},
+    {"id_voo": 2, "cidade_ida": "Rio de Janeiro", "cidade_volta": "Salvador", "data": "2025-10-16T12:30:00"},
+    {"id_voo": 3, "cidade_ida": "Belo Horizonte", "cidade_volta": "Porto Alegre", "data": "2025-11-05T08:45:00"},
+    {"id_voo": 4, "cidade_ida": "Nova York", "cidade_volta": "São Paulo", "data": "2025-11-20T22:00:00"},
+    {"id_voo": 5, "cidade_ida": "Lisboa", "cidade_volta": "Recife", "data": "2025-12-01T15:10:00"},
+]
+
+DADOS_HOTEIS_FIXOS = [
+    {"id_hotel": 1, "cidade": "Rio de Janeiro", "estrelas": 5},
+    {"id_hotel": 2, "cidade": "Salvador", "estrelas": 4},
+    {"id_hotel": 3, "cidade": "Porto Alegre", "estrelas": 4},
+    {"id_hotel": 4, "cidade": "São Paulo", "estrelas": 5},
+    {"id_hotel": 5, "cidade": "Recife", "estrelas": 3},
+]
+
+THREASHOLD = 100
 
 if __name__ == "__main__":
     spark = SparkSession.builder \
         .appName("TravelBatchProcessorPersistent") \
         .getOrCreate()
+    
+    # Criando DataFrames usando inferência de esquema
+    df_voos_master = spark.createDataFrame(DADOS_VOOS_FIXOS, schema=voos_master_schema)
+    df_hoteis_master = spark.createDataFrame(DADOS_HOTEIS_FIXOS, schema=hoteis_master_schema)
+    df_voos_master = df_voos_master.withColumn("data", to_timestamp(col("data")))
 
     print("SparkSession criada com sucesso para processamento em lote persistente!")
+    print("\nDataFrame Master de Voos carregado:")
+    df_voos_master.show()
+    df_voos_master.printSchema()
+    print("\nDataFrame Master de Hoteis carregado:")
+    df_hoteis_master.show()
+    df_hoteis_master.printSchema()
 
     REDIS_HOST = os.getenv('REDIS_HOST', 'redis-server')
     REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
     MONITOR_INTERVAL = int(os.getenv('MONITOR_INTERVAL_SECONDS', 5))
     
     # Lista de chaves do Redis e seus thresholds
-    list_thresholds_json = os.getenv('LIST_THRESHOLDS_JSON', '{"raw_travel_data_list": 50, "raw_flights": 50}')
+    list_thresholds_json = os.getenv('LIST_THRESHOLDS_JSON', '{"raw_hotels": 50, "raw_flights": 50}')
     LIST_THRESHOLDS = json.loads(list_thresholds_json)
 
     r_client = None
@@ -55,65 +102,108 @@ if __name__ == "__main__":
                 r_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
                 r_client.ping()
                 print(f"Conectado ao Redis em {REDIS_HOST}:{REDIS_PORT}.")
+
+            total_rows = 0
             
             # Itera sobre cada lista definida e seu threshold
             for list_key, threshold in LIST_THRESHOLDS.items():
                 list_size = r_client.llen(list_key)
-                print(f"Verificando lista '{list_key}': Tamanho atual = {list_size}, Threshold = {threshold}")
+                total_rows += list_size
+                print(f"Verificando lista '{total_rows}': Tamanho atual = {list_size}, Threshold = {THREASHOLD}")
 
-                if list_size >= threshold:
-                    print(f"Threshold atingido para '{list_key}' ({list_size} >= {threshold}). Processando lote...")
+            if total_rows >= THREASHOLD:
+                print(f"Threshold atingido!")
 
-                    # Ler dados do Redis
-                    raw_messages = r_client.lrange(list_key, 0, list_size - 1)
+                # Ler dados do Redis
+                raw_messages_hoteis = r_client.lrange("raw_hotels", 0, list_size - 1)
+                raw_messages_voos = r_client.lrange("raw_flights", 0, list_size - 1)
+                
+                if not raw_messages_hoteis or not raw_messages_voos:
+                    print(f"Erro após threshold atingido.")
+                    continue
+
+                # Converte as strings JSON em dicionários Python
+                parsed_data_hoteis = []
+                for msg in raw_messages_hoteis:
+                    try:
+                        item = json.loads(msg)
+                        # Converte a string de timestamp para objeto datetime
+                        item['timestamp'] = datetime.datetime.fromisoformat(item['timestamp'])
+                        parsed_data_hoteis.append(item)
+                    except (json.JSONDecodeError, ValueError) as e:
+                        print(f"Erro ao parsear ou converter mensagem JSON/timestamp de hotéis")
+                        continue 
+                parsed_data_voos = []
+                for msg in raw_messages_voos:
+                    try:
+                        item = json.loads(msg)
+                        # Converte a string de timestamp para objeto datetime
+                        item['timestamp'] = datetime.datetime.fromisoformat(item['timestamp'])
+                        parsed_data_voos.append(item)
+                    except (json.JSONDecodeError, ValueError) as e:
+                        print(f"Erro ao parsear ou converter mensagem JSON/timestamp de voos")
+                        continue 
+
+                # Cria um DataFrame a partir dos dados lidos
+                if parsed_data_hoteis and parsed_data_voos:
+                    df_raw_redis_message_hoteis = spark.createDataFrame(parsed_data_hoteis, schema=raw_redis_message_schema)
+                    df_raw_redis_message_voos = spark.createDataFrame(parsed_data_voos, schema=raw_redis_message_schema)
                     
-                    if not raw_messages:
-                        print(f"Erro: Threshold atingido para '{list_key}', mas a lista está vazia. Pulando.")
-                        continue
+                    print(f"DataFrames raw criados")
+                    df_raw_redis_message_hoteis.show(truncate=False)
+                    df_raw_redis_message_voos.show(truncate=False)
 
-                    # Converte as strings JSON em dicionários Python
-                    parsed_data = []
-                    for msg in raw_messages:
-                        try:
-                            item = json.loads(msg)
-                            # Converte a string de timestamp para objeto datetime
-                            item['timestamp'] = datetime.datetime.fromisoformat(item['timestamp'])
-                            parsed_data.append(item)
-                        except (json.JSONDecodeError, ValueError) as e:
-                            print(f"Erro ao parsear ou converter mensagem JSON/timestamp de '{list_key}': {msg} - {e}")
-                            continue 
+                    # Parseia o JSON na coluna 'data' usando o schema de payload
+                    df_hoteis = df_raw_redis_message_hoteis.withColumn(
+                        "parsed_payload", from_json(col("data"), hotel_data_payload_schema)
+                    ).select(
+                        col("company_id"),
+                        col("timestamp").alias("event_timestamp"), # Timestamp da chegada do evento no Redis
+                        col("parsed_payload.id_hotel").alias("id_hotel"),
+                        col("parsed_payload.valor").alias("valor"),
+                        col("parsed_payload.data_reservada").alias("data_reservada"), # A data ainda é string aqui
+                        col("parsed_payload.data_reserva").alias("data_reserva"), # A data ainda é string aqui
+                        col("parsed_payload.id_reserva_hotel").alias("id_reserva_hotel"), # A data ainda é string aqui
+                    )
+                    df_voos = df_raw_redis_message_voos.withColumn(
+                        "parsed_payload", from_json(col("data"), flight_data_payload_schema)
+                    ).select(
+                        col("company_id"),
+                        col("timestamp").alias("event_timestamp"), # Timestamp da chegada do evento no Redis
+                        col("parsed_payload.id_voo").alias("id_voo"),
+                        col("parsed_payload.valor").alias("valor"),
+                        col("parsed_payload.id_reserva_voo").alias("id_reserva_voo"), # A data ainda é string aqui
+                        col("parsed_payload.data_reserva").alias("data_reserva"), # A data ainda é string aqui
+                    )
 
-                    # Cria um DataFrame a partir dos dados lidos
-                    if parsed_data:
-                        df_raw = spark.createDataFrame(parsed_data, schema=raw_data_schema)
-                        print(f"DataFrame raw criado para '{list_key}':")
-                        df_raw.show(truncate=False)
+                    # Converte a coluna 'data_reservada' para TimestampType
+                    df_hoteis = df_hoteis.withColumn(
+                        "data_reservada", to_timestamp(col("data_reservada")))
+                    df_hoteis = df_hoteis.withColumn(
+                        "data_reserva", to_timestamp(col("data_reserva")))
+                    df_voos = df_voos.withColumn(
+                        "data_reserva", to_timestamp(col("data_reserva")))
 
-                        # Exemplo de processamento: Estatísticas de Reservas de Voos
-                        if list_key == "raw_travel_data_list" or list_key == "raw_flights":
-                            df_flight_bookings = df_raw.filter(col("event_type") == "flight_booking")
+                    joined_hotel = pf.join(df_hoteis_master, df_hoteis, "id_hotel")
+                    all_stats_hotel = pf.groupby_stats_hotels(joined_hotel)
+                    stats_city_hotel = pf.groupby_city_hotels(all_stats_hotel)
+                    stats_month_hotel = pf.groupby_month_hotels(all_stats_hotel)
 
-                            flight_booking_stats = df_flight_bookings \
-                                .groupBy("company_id") \
-                                .agg(count("*").alias("total_flight_bookings"))
+                    print(f"Estatísticas de faturamento por cidade e companhia para '{list_key}':")
+                    stats_city_hotel.show()
 
-                            print(f"Estatísticas de Reservas de Voos por Companhia para '{list_key}':")
-                            flight_booking_stats.show()
+                    # Armazenar estatísticas
+                    # output_stats_path = f"/tmp/processed_stats_batch/{list_key}"
+                    # stats_city_hotel.write.mode("append").parquet(output_stats_path)
+                    # print(f"Estatísticas de reservas de voos salvas em: {output_stats_path}")
 
-                            # Armazenar estatísticas
-                            output_stats_path = f"/tmp/processed_stats_batch/{list_key}"
-                            flight_booking_stats.write.mode("append").parquet(output_stats_path)
-                            print(f"Estatísticas de reservas de voos salvas em: {output_stats_path}")
-                        else:
-                            print(f"Processamento específico para '{list_key}' não implementado neste exemplo.")
-
-                        # Remove os dados que acabaram de ser processados da lista Redis
-                        r_client.ltrim(list_key, list_size, -1)
-                        print(f"Limpos {list_size} mensagens da lista Redis '{list_key}'.")
-                    else:
-                        print(f"Nenhum dado válido para criar DataFrame para '{list_key}'.")
+                    # Remove os dados que acabaram de ser processados da lista Redis
+                    r_client.ltrim(list_key, list_size, -1)
+                    print(f"Limpos {list_size} mensagens da lista Redis '{list_key}'.")
                 else:
-                    print(f"Não há dados suficientes na lista '{list_key}' para atingir o threshold.")
+                    print(f"Nenhum dado válido para criar DataFrame.")
+            else:
+                print(f"Não há dados suficientes para atingir o threshold.")
 
         except redis.exceptions.ConnectionError as e:
             print(f"Erro de conexão com Redis: {e}. Tentando reconectar no próximo ciclo...")
