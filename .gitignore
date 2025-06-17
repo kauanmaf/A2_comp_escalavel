@@ -1,2 +1,3 @@
-pgdata_stats
-pgdata_total
+venv/
+pgdata_stats/
+pgdata_total/
