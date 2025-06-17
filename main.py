@@ -150,8 +150,8 @@ if __name__ == "__main__":
                     df_raw_redis_message_voos = spark.createDataFrame(parsed_data_voos, schema=raw_redis_message_schema)
                     
                     print(f"DataFrames raw criados")
-                    df_raw_redis_message_hoteis.show(truncate=False)
-                    df_raw_redis_message_voos.show(truncate=False)
+                    # df_raw_redis_message_hoteis.show(truncate=False)
+                    # df_raw_redis_message_voos.show(truncate=False)
 
                     # Parseia o JSON na coluna 'data' usando o schema de payload
                     df_hoteis = df_raw_redis_message_hoteis.withColumn(
@@ -176,20 +176,37 @@ if __name__ == "__main__":
                         col("parsed_payload.data_reserva").alias("data_reserva"), # A data ainda é string aqui
                     )
 
+                    # print("*** df_hoteis ***")
+                    # df_hoteis.show()
+
                     # Converte a coluna 'data_reservada' para TimestampType
                     df_hoteis = df_hoteis.withColumn(
                         "data_reservada", to_timestamp(col("data_reservada")))
                     df_hoteis = df_hoteis.withColumn(
                         "data_reserva", to_timestamp(col("data_reserva")))
+                    
+                    # print("*** df_hoteis ***")
+                    # df_hoteis.show()        
+        
                     df_voos = df_voos.withColumn(
                         "data_reserva", to_timestamp(col("data_reserva")))
 
                     joined_hotel = pf.join(df_hoteis_master, df_hoteis, "id_hotel")
+
+                    # print("*** joined_hotel ***")
+                    # joined_hotel.show()
+
                     all_stats_hotel = pf.groupby_stats_hotels(joined_hotel)
+
+                    # print("*** all_stats_hotel ***")
+                    # all_stats_hotel.show()
+
                     stats_city_hotel = pf.groupby_city_hotels(all_stats_hotel)
                     stats_month_hotel = pf.groupby_month_hotels(all_stats_hotel)
 
-                    print(f"Estatísticas de faturamento por cidade e companhia para '{list_key}':")
+                    print(f"Estatísticas de faturamento por mês e companhia:")
+                    stats_month_hotel.show()
+                    print(f"Estatísticas de faturamento por cidade e companhia:")
                     stats_city_hotel.show()
 
                     # Armazenar estatísticas
@@ -198,7 +215,8 @@ if __name__ == "__main__":
                     # print(f"Estatísticas de reservas de voos salvas em: {output_stats_path}")
 
                     # Remove os dados que acabaram de ser processados da lista Redis
-                    r_client.ltrim(list_key, list_size, -1)
+                    r_client.ltrim("raw_hotels", list_size, -1)
+                    r_client.ltrim("raw_flights", list_size, -1)
                     print(f"Limpos {list_size} mensagens da lista Redis '{list_key}'.")
                 else:
                     print(f"Nenhum dado válido para criar DataFrame.")

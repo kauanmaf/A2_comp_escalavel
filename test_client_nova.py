@@ -57,8 +57,16 @@ def generate_flight_reservation_data():
     data_payload = {
         # Usa o ID do voo selecionado
         "id_voo": voo_selecionado['id_voo'],
+        "id_reserva_voo": round(random.uniform(300, 2500), 2),
         # Gera um preço aleatório para a reserva
-        "valor": round(random.uniform(300, 2500), 2)
+        "valor": round(random.uniform(300, 2500), 2),
+        "data_reserva": datetime(
+            2025,
+            random.randint(1, 12),
+            random.randint(1, 28),
+            random.randint(10, 22), # Check-in time
+            random.choice([0, 30]) # Minutes
+        ).isoformat()
     }
     return data_payload
 
@@ -82,10 +90,12 @@ def generate_hotel_reservation_data():
     data_payload = {
         # Usa o ID do hotel selecionado
         "id_hotel": hotel_selecionado['id_hotel'],
+        "id_reserva_hotel": round(random.uniform(150, 2000)),
         # Gera um preço aleatório para a reserva
         "valor": round(random.uniform(150, 2000), 2),
         # Data para a qual o hotel foi reservado
-        "data_reservada": reserved_date.isoformat()
+        "data_reservada": reserved_date.isoformat(),
+        "data_reserva": reserved_date.isoformat()
     }
     return data_payload
 
