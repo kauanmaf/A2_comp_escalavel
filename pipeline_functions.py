@@ -41,7 +41,8 @@ def groupby_city_hotels(df_stats_hotels):
         "company_id",
         "cidade",
     ).agg(
-        sum("sum_valor").alias("sum_valor")
+        sum("sum_valor").alias("sum_valor"),
+        count("*").alias("num_reservas")
     ).orderBy(
         "company_id", "sum_valor"
     )
@@ -53,7 +54,8 @@ def groupby_city_flights(df_stats_flights):
         "company_id",
         "cidade_destino",
     ).agg(
-        sum("sum_valor").alias("sum_valor")
+        sum("sum_valor").alias("sum_valor"),
+        count("*").alias("num_reservas")
     ).orderBy(
         "company_id", "sum_valor"
     )

@@ -184,16 +184,24 @@ if __name__ == "__main__":
 
                     joined_hotel = pf.join(df_hoteis_master, df_hoteis, "id_hotel")
                     all_stats_hotel = pf.groupby_city_month_hotels(joined_hotel)
-                    stats_city_hotel = pf.groupby_city_hotels(all_stats_hotel)
+
+                    grouped_city_hotel = pf.groupby_city_hotels(all_stats_hotel)
+                    stats_city_hotel = grouped_city_hotel.drop("num_reservas")
+
                     stats_month_hotel = pf.groupby_month(all_stats_hotel)
 
                     joined_voos = pf.join(df_voos_master, df_voos, "id_voo")
                     all_stats_voos = pf.groupby_city_month_flights(joined_voos)
-                    stats_city_voos = pf.groupby_city_flights(all_stats_voos)
+
+                    grouped_city_voos = pf.groupby_city_flights(all_stats_voos)
+                    stats_city_voos = grouped_city_voos.drop("num_reservas")
+
                     stats_month_voos = pf.groupby_month(all_stats_voos)
 
                     joined_faturamentos = pf.join_profits(stats_month_hotel, stats_month_voos)
                     stats_faturamentos_totais = pf.sum_profits(joined_faturamentos)
+
+                    
 
                     stats_stars_hotel = pf.groupby_stars_hotels(joined_hotel)
 
@@ -206,9 +214,9 @@ if __name__ == "__main__":
                     print(f"Estatísticas de faturamento de hotéis por cidade e companhia:")
                     stats_city_hotel.show()
                     print(f"Estatísticas de faturamento de voos por mês e companhia:")
-                    stats_month_hotel.show()
+                    stats_month_voos.show()
                     print(f"Estatísticas de faturamento de voos por cidade e companhia:")
-                    stats_city_hotel.show()
+                    stats_city_voos.show()
                     print(f"Estatísticas de faturamento total por mês e companhia:")
                     stats_faturamentos_totais.show()
                     print(f"Estatísticas de reservas de hotel por estrela e companhia:")
