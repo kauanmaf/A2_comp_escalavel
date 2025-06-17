@@ -68,6 +68,24 @@ services:
     networks:
       - a2_comp_escalavel_default
 
+  # Serviço para gerar dados fixos (executa uma vez e para)
+  data-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile.generator
+    depends_on:
+      postgres-data:
+        condition: service_healthy
+    environment:
+      PG_DATA_HOST: postgres-data
+      PG_DATA_PORT: 5432
+      PG_DATA_DB: dados_gerais
+      PG_DATA_USER: emap
+      PG_DATA_PASSWORD: emap123
+    networks:
+      - a2_comp_escalavel_default
+    restart: "no"  # Não reinicia automaticamente após completar
+
   spark-worker:
     image: bitnami/spark:3.5.1
     depends_on:
@@ -92,10 +110,16 @@ services:
       context: .
       dockerfile: Dockerfile
     depends_on:
-      - spark-master
-      - redis-server
-      - postgres-data # Adicionada dependência
-      - postgres-stats # Adicionada dependência
+      spark-master:
+        condition: service_started
+      redis-server:
+        condition: service_started
+      postgres-data:
+        condition: service_healthy
+      postgres-stats:
+        condition: service_healthy
+      data-generator:
+        condition: service_completed_successfully  # Aguarda a geração dos dados fixos
     environment:
       SPARK_MASTER_URL: spark://spark-master:7077
       REDIS_HOST: redis-server

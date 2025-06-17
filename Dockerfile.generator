@@ -1,0 +1,23 @@
+# Dockerfile para o gerador de base de dados
+FROM python:3.11-slim
+
+# Define o diretório de trabalho
+WORKDIR /app
+
+# Instala as dependências do sistema
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Instala as dependências Python
+RUN pip install --no-cache-dir \
+    pandas>=2.0.0 \
+    psycopg2-binary>=2.9.0 \
+    faker>=19.0.0
+
+# Copia o script do gerador
+COPY generate_fixed_database.py ./
+
+# Define o comando padrão
+CMD ["python", "generate_fixed_database.py"]
