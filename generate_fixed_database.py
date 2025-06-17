@@ -4,6 +4,8 @@ import psycopg2
 from datetime import datetime, timedelta
 from faker import Faker
 import os
+import sys
+import time
 from typing import List, Tuple
 
 # Configuração
@@ -37,6 +39,73 @@ class DatabaseGenerator:
     def __init__(self):
         self.hoteis_df = None
         self.voos_df = None
+
+    def wait_for_database(self, max_attempts=30, delay=5):
+        """Aguarda o banco de dados ficar disponível"""
+        print(f"Aguardando conexão com PostgreSQL em {DB_CONFIG['host']}:{DB_CONFIG['port']}...")
+
+        for attempt in range(max_attempts):
+            try:
+                conn = psycopg2.connect(**DB_CONFIG)
+                conn.close()
+                print("✅ Conexão com PostgreSQL estabelecida!")
+                return True
+            except psycopg2.Error as e:
+                print(f"⏳ Tentativa {attempt + 1}/{max_attempts} falhou: {e}")
+                if attempt < max_attempts - 1:
+                    time.sleep(delay)
+
+        print("❌ Falha ao conectar com PostgreSQL após todas as tentativas!")
+        return False
+
+    def check_tables_exist(self):
+        """Verifica se as tabelas já existem com dados"""
+        try:
+            conn = psycopg2.connect(**DB_CONFIG)
+            cursor = conn.cursor()
+
+            # Verificar se tabela de hotéis existe e tem dados
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_name = 'hoteis'
+                );
+            """)
+            hoteis_exists = cursor.fetchone()[0]
+
+            if hoteis_exists:
+                cursor.execute("SELECT COUNT(*) FROM hoteis;")
+                hoteis_count = cursor.fetchone()[0]
+            else:
+                hoteis_count = 0
+
+            # Verificar se tabela de voos existe e tem dados
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_name = 'voos'
+                );
+            """)
+            voos_exists = cursor.fetchone()[0]
+
+            if voos_exists:
+                cursor.execute("SELECT COUNT(*) FROM voos;")
+                voos_count = cursor.fetchone()[0]
+            else:
+                voos_count = 0
+
+            cursor.close()
+            conn.close()
+
+            if hoteis_count > 0 and voos_count > 0:
+                print(f"📊 Dados já existem: {hoteis_count:,} hotéis e {voos_count:,} voos")
+                return True
+
+            return False
+
+        except psycopg2.Error as e:
+            print(f"Erro ao verificar tabelas: {e}")
+            return False
 
     def generate_hoteis(self) -> pd.DataFrame:
         """Gera dados para a tabela de hotéis"""
@@ -151,26 +220,6 @@ class DatabaseGenerator:
         """
         return sql
 
-    def save_to_csv(self, output_dir: str = "./data"):
-        """Salva os dados em arquivos CSV"""
-        os.makedirs(output_dir, exist_ok=True)
-
-        if self.hoteis_df is not None:
-            hoteis_path = os.path.join(output_dir, "hoteis.csv")
-            self.hoteis_df.to_csv(hoteis_path, index=False, encoding='utf-8')
-            print(f"Dados de hotéis salvos em: {hoteis_path}")
-
-        if self.voos_df is not None:
-            voos_path = os.path.join(output_dir, "voos.csv")
-            self.voos_df.to_csv(voos_path, index=False, encoding='utf-8')
-            print(f"Dados de voos salvos em: {voos_path}")
-
-        # Salvar SQL de criação das tabelas
-        sql_path = os.path.join(output_dir, "create_tables.sql")
-        with open(sql_path, 'w', encoding='utf-8') as f:
-            f.write(self.create_tables_sql())
-        print(f"SQL de criação das tabelas salvo em: {sql_path}")
-
     def insert_to_database(self):
         """Insere os dados diretamente no PostgreSQL"""
         try:
@@ -192,7 +241,7 @@ class DatabaseGenerator:
                     hoteis_tuples
                 )
                 conn.commit()
-                print(f"Inseridos {len(hoteis_tuples)} hotéis")
+                print(f"✅ Inseridos {len(hoteis_tuples):,} hotéis")
 
             # Inserir voos (em lotes para performance)
             if self.voos_df is not None:
@@ -208,51 +257,57 @@ class DatabaseGenerator:
                         batch
                     )
                     conn.commit()
-                    print(f"Inseridos {min(i + batch_size, len(voos_tuples))} de {len(voos_tuples)} voos")
+                    print(f"⏳ Inseridos {min(i + batch_size, len(voos_tuples)):,} de {len(voos_tuples):,} voos")
 
-                print(f"Todos os {len(voos_tuples)} voos inseridos com sucesso!")
+                print(f"✅ Todos os {len(voos_tuples):,} voos inseridos com sucesso!")
 
             cursor.close()
             conn.close()
-            print("Dados inseridos com sucesso no PostgreSQL!")
+            print("🎉 Dados inseridos com sucesso no PostgreSQL!")
+            return True
 
         except psycopg2.Error as e:
-            print(f"Erro ao conectar ou inserir no PostgreSQL: {e}")
-            print("Os dados foram salvos em CSV como alternativa.")
+            print(f"❌ Erro ao conectar ou inserir no PostgreSQL: {e}")
+            return False
 
     def generate_statistics(self):
         """Gera estatísticas dos dados gerados"""
         if self.hoteis_df is not None:
             print("\n=== ESTATÍSTICAS DOS HOTÉIS ===")
-            print(f"Total de hotéis: {len(self.hoteis_df)}")
+            print(f"Total de hotéis: {len(self.hoteis_df):,}")
             print(f"Cidades com hotéis: {self.hoteis_df['cidade'].nunique()}")
             print("\nDistribuição por estrelas:")
-            print(self.hoteis_df['estrelas'].value_counts().sort_index())
+            estrelas_stats = self.hoteis_df['estrelas'].value_counts().sort_index()
+            total_hoteis = len(self.hoteis_df)
+            for estrela, count in estrelas_stats.items():
+                percentual = (count / total_hoteis) * 100
+                print(f"{estrela}★: {count:,} ({percentual:.1f}%)")
             print(f"\nMédia de hotéis por cidade: {len(self.hoteis_df) / len(CIDADES_BRASILEIRAS):.1f}")
 
         if self.voos_df is not None:
             print("\n=== ESTATÍSTICAS DOS VOOS ===")
-            print(f"Total de voos: {len(self.voos_df)}")
-            print(f"Rotas únicas: {len(self.voos_df[['cidade_ida', 'cidade_volta']].drop_duplicates())}")
-
-            # Voos por mês
-            print("\nVoos por mês:")
-            monthly_flights = self.voos_df.groupby('mes').size()
-            for mes, count in monthly_flights.items():
-                print(f"Mês {mes:2d}: {count:,} voos")
-
-            # Rotas mais movimentadas
-            print("\nTop 10 rotas mais movimentadas:")
-            top_routes = self.voos_df.groupby(['cidade_ida', 'cidade_volta']).size().sort_values(ascending=False).head(10)
-            for (ida, volta), count in top_routes.items():
-                print(f"{ida} → {volta}: {count} voos")
+            print(f"Total de voos: {len(self.voos_df):,}")
+            print(f"Rotas únicas: {len(self.voos_df[['cidade_ida', 'cidade_volta']].drop_duplicates()):,}")
+            print(f"Voos por dia (média): {len(self.voos_df) / 362:.1f}")  # 362 dias
 
 def main():
     """Função principal"""
-    print("=== GERADOR DE BASE DE DADOS FIXA ===")
+    print("🚀 === GERADOR DE BASE DE DADOS FIXA ===")
     print("Gerando dados para sistema de viagens...\n")
 
     generator = DatabaseGenerator()
+
+    # Aguardar banco de dados ficar disponível
+    if not generator.wait_for_database():
+        print("❌ Falha ao conectar com o banco de dados. Saindo...")
+        sys.exit(1)
+
+    # Verificar se os dados já existem
+    if generator.check_tables_exist():
+        print("📊 Os dados já foram carregados anteriormente. Nada a fazer.")
+        return
+
+    print("📝 Gerando novos dados...")
 
     # Gerar dados
     generator.generate_hoteis()
@@ -261,16 +316,16 @@ def main():
     # Mostrar estatísticas
     generator.generate_statistics()
 
-    # Salvar em CSV (sempre)
-    print("\n=== SALVANDO DADOS ===")
-    generator.save_to_csv()
-
-    # Tentar inserir no PostgreSQL
+    # Inserir no PostgreSQL
     print("\n=== INSERINDO NO POSTGRESQL ===")
-    generator.insert_to_database()
+    success = generator.insert_to_database()
 
-    print("\n=== PROCESSO CONCLUÍDO ===")
-    print("Os dados estão prontos para uso!")
+    if success:
+        print("\n🎉 === PROCESSO CONCLUÍDO COM SUCESSO ===")
+        print("Os dados estão prontos para uso!")
+    else:
+        print("\n❌ === PROCESSO FALHOU ===")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
