@@ -56,8 +56,7 @@ services:
       POSTGRES_PASSWORD: emap123
     volumes:
       - ./pgdata_stats:/var/lib/postgresql/data # Volume dedicado para estatísticas
-      # Opcional: para inicializar o esquema e dados na primeira inicialização
-      # - ./init_stats.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./dados_stats_ini.sql:/docker-entrypoint-initdb.d/01-init-stats.sql # Inicializa as tabelas de estatísticas
     ports:
       - "5433:5432" # Mapeia para a porta 5433 na sua máquina (evita conflito com 5432)
     healthcheck:
