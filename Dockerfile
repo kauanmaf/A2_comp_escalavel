@@ -11,6 +11,7 @@ RUN /opt/bitnami/python/bin/pip install redis faker pyspark
 
 # Copia o script do job Spark
 COPY main.py ./
+COPY pipeline_functions.py ./
 
 # Copia e torna executável o entrypoint.sh
 # COPY entrypoint.sh ./
