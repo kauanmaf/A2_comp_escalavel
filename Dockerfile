@@ -7,7 +7,7 @@ WORKDIR /app
 USER root
 
 # Instala as dependências
-RUN /opt/bitnami/python/bin/pip install redis faker pyspark
+RUN /opt/bitnami/python/bin/pip install redis faker pyspark psycopg2-binary
 
 # Copia o script do job Spark
 COPY main.py ./

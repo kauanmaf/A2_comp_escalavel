@@ -1,6 +1,10 @@
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import col, to_date, date_format, count, sum, avg, month
 from datetime import datetime, timedelta
+import redis
+import uuid
+from datetime import datetime
+import psycopg2 # Import psycopg2 for PostgreSQL connection
 
 def join(df1, df2, id):
     df_joined = df1.join(df2, on = id)
@@ -148,3 +152,95 @@ def groupby_day_sp_flights(df_sp_relevant_flights: DataFrame) -> DataFrame:
     # Group by event_date and company_id to count total flights
     return df_with_event_date.groupBy("data_reserva", "company_id") \
                             .agg(count("*").alias("num_reservas"))
+
+
+def create_redis_set(spark_df: DataFrame, id_column_name: str, redis_conn: redis.Redis, redis_set_prefix: str = "ids_to_fetch") -> str:
+    """
+    Collects IDs from a Spark DataFrame and adds them to a Redis set.
+    A new set key is generated with a timestamp and UUID for uniqueness.
+    """
+    if id_column_name not in spark_df.columns:
+        print(f"Coluna '{id_column_name}' não encontrada no DataFrame.")
+        return None
+
+    ids_to_add = [str(row[id_column_name]) for row in spark_df.select(id_column_name).distinct().collect()]
+    if not ids_to_add:
+        print("Nenhum ID encontrado no DataFrame Spark para adicionar ao Redis.")
+        return None
+
+    # Generate a unique set key
+    redis_set_key = f"{redis_set_prefix}:{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+    print(f"Criando novo set Redis com chave '{redis_set_key}'...")
+
+    try:
+        redis_conn.sadd(redis_set_key, *ids_to_add)
+        print(f"{len(ids_to_add)} IDs adicionados com sucesso ao set '{redis_set_key}'!")
+        print(f"Número total de membros no set: {redis_conn.scard(redis_set_key)}")
+    except Exception as e:
+        print(f"Erro ao adicionar IDs ao Redis: {e}")
+        return None
+
+    return redis_set_key
+
+def postgres_by_redis_set(redis_set_key: str, table_name: str, id_column_name_pg: str, spark_session: SparkSession, redis_conn: redis.Redis, pg_conn_params: dict) -> DataFrame:
+    """
+    Fetches data from a PostgreSQL table using IDs stored in a Redis set.
+    
+    Args:
+        redis_set_key (str): The key of the Redis set containing the IDs.
+        table_name (str): The name of the PostgreSQL table to query.
+        id_column_name_pg (str): The name of the ID column in the PostgreSQL table.
+        spark_session (SparkSession): The SparkSession object.
+        redis_conn (redis.Redis): The Redis connection object.
+        pg_conn_params (dict): Dictionary containing PostgreSQL connection parameters (e.g., 'host', 'database', 'user', 'password').
+
+    Returns:
+        DataFrame: A Spark DataFrame containing the fetched data, or None if an error occurs.
+    """
+    try:
+        ids_from_redis = list(redis_conn.smembers(redis_set_key))
+        if not ids_from_redis:
+            print(f"O set '{redis_set_key}' está vazio ou não existe.")
+            return None
+
+        # Decode bytes to strings
+        ids_from_redis = [id_val.decode('utf-8') for id_val in ids_from_redis]
+        
+        print(f"{len(ids_from_redis)} IDs recuperados do set '{redis_set_key}'")
+
+    except redis.exceptions.ConnectionError as e:
+        print(f"Erro ao conectar ao Redis: {e}")
+        return None
+    except Exception as e:
+        print(f"Erro ao recuperar IDs do Redis: {e}")
+        return None
+
+    # Connect to PostgreSQL and fetch data
+    try:
+        # PostgreSQL connection string for Spark
+        jdbc_url = f"jdbc:postgresql://{pg_conn_params['host']}:{pg_conn_params['port']}/{pg_conn_params['database']}"
+        
+        # Convert list of IDs to a comma-separated string for the IN clause
+        # Ensure IDs are properly quoted if they are string types in PG
+        ids_str = ','.join([f"'{id_val}'" for id_val in ids_from_redis]) if isinstance(ids_from_redis[0], str) else ','.join(ids_from_redis)
+        
+        # Build the query
+        query = f"(SELECT * FROM {table_name} WHERE {id_column_name_pg} IN ({ids_str})) as data"
+
+        df = spark_session.read \
+            .format("jdbc") \
+            .option("url", jdbc_url) \
+            .option("dbtable", query) \
+            .option("user", pg_conn_params['user']) \
+            .option("password", pg_conn_params['password']) \
+            .load()
+        
+        print(f"DataFrame do PostgreSQL para a tabela '{table_name}' criado com sucesso.")
+        
+        return df
+
+    except Exception as e:
+        print(f"Erro ao consultar o PostgreSQL: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
