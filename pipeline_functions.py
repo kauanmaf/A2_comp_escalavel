@@ -90,6 +90,27 @@ def sum_profits(joined_profits):
 
     return df_sum_profits
 
+def average_profits(grouped_city_hotels, grouped_city_flights):
+    renamed_grouped_city_hotels = grouped_city_hotels.withColumnRenamed("sum_valor", "sum_valor_hoteis") \
+                                                     .withColumnRenamed("num_reservas", "num_reservas_hoteis") \
+                                                     .withColumnRenamed("cidade", "cidade_destino")
+
+    renamed_grouped_city_flights = grouped_city_flights.withColumnRenamed("sum_valor", "sum_valor_voos") \
+                                                       .withColumnRenamed("num_reservas", "num_reservas_voos")
+
+    joined_df = renamed_grouped_city_hotels.join(renamed_grouped_city_flights,
+                                                 on = ["company_id", "cidade_destino"])
+    
+    df_average_profits = joined_df \
+        .withColumn(
+            "sum_valor", col("sum_valor_hoteis") + col("sum_valor_voos")
+        ).drop("sum_valor_hoteis", "sum_valor_voos") \
+        .withColumn(
+            "num_transacoes", col("num_reservas_hoteis") + col("num_reservas_voos")
+        ).drop("num_reservas_hoteis", "num_reservas_voos")
+    
+    return df_average_profits
+
 def groupby_stars_hotels(df_joined_hotels):
     df_grouped_stars = df_joined_hotels.groupBy(
         "company_id",
