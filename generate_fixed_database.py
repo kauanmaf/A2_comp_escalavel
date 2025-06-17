@@ -45,21 +45,30 @@ class DatabaseGenerator:
         hoteis_data = []
         id_hotel = 1
 
+        # Distribuição de estrelas conforme especificado:
+        # 1 estrela: 10%, 2 estrelas: 15%, 3 estrelas: 35%, 4 estrelas: 25%, 5 estrelas: 15%
+        estrelas_opcoes = [1, 2, 3, 4, 5]
+        estrelas_pesos = [10, 15, 35, 25, 15]  # Percentuais
+
         for cidade in CIDADES_BRASILEIRAS:
             # 30-50 hotéis por cidade
             num_hoteis = random.randint(50, 250)
 
             for i in range(num_hoteis):
+                # Escolher estrelas baseado na distribuição desejada
+                estrelas = random.choices(estrelas_opcoes, weights=estrelas_pesos, k=1)[0]
+
                 hotel = {
                     'id_hotel': id_hotel,
                     'cidade': cidade,
-                    'estrelas': random.randint(1, 5)
+                    'estrelas': estrelas
                 }
                 hoteis_data.append(hotel)
                 id_hotel += 1
 
         self.hoteis_df = pd.DataFrame(hoteis_data)
         print(f"Gerados {len(self.hoteis_df)} hotéis em {len(CIDADES_BRASILEIRAS)} cidades")
+        print("Distribuição de estrelas aplicada: 1★=10%, 2★=15%, 3★=35%, 4★=25%, 5★=15%")
         return self.hoteis_df
 
     def is_weekend(self, date: datetime) -> bool:
@@ -75,7 +84,7 @@ class DatabaseGenerator:
 
         # Gerar voos para todos os dias de 2025
         start_date = datetime(2025, 1, 1)
-        end_date = datetime(2025, 12, 31)
+        end_date = datetime(2025, 12, 28)
 
         current_date = start_date
         while current_date <= end_date:
