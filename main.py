@@ -43,18 +43,18 @@ hoteis_master_schema = StructType([
 # Esquema para a base de Voos (Master Data)
 voos_master_schema = StructType([
     StructField("id_voo", IntegerType(), False),
-    StructField("cidade_ida", StringType(), False),
-    StructField("cidade_volta", StringType(), False),
+    StructField("cidade_origem", StringType(), False),
+    StructField("cidade_destino", StringType(), False),
     StructField("data", StringType(), False) # Data do voo como string (será convertida depois se precisar de Timestamp)
 ])
 
 # --- DADOS FIXOS SIMULANDO AS TABELAS DO BANCO ---
 DADOS_VOOS_FIXOS = [
-    {"id_voo": 1, "cidade_ida": "São Paulo", "cidade_volta": "Rio de Janeiro", "data": "2025-10-15T10:00:00"},
-    {"id_voo": 2, "cidade_ida": "Rio de Janeiro", "cidade_volta": "Salvador", "data": "2025-10-16T12:30:00"},
-    {"id_voo": 3, "cidade_ida": "Belo Horizonte", "cidade_volta": "Porto Alegre", "data": "2025-11-05T08:45:00"},
-    {"id_voo": 4, "cidade_ida": "Nova York", "cidade_volta": "São Paulo", "data": "2025-11-20T22:00:00"},
-    {"id_voo": 5, "cidade_ida": "Lisboa", "cidade_volta": "Recife", "data": "2025-12-01T15:10:00"},
+    {"id_voo": 1, "cidade_origem": "São Paulo", "cidade_destino": "Rio de Janeiro", "data": "2025-10-15T10:00:00"},
+    {"id_voo": 2, "cidade_origem": "Rio de Janeiro", "cidade_destino": "Salvador", "data": "2025-10-16T12:30:00"},
+    {"id_voo": 3, "cidade_origem": "Belo Horizonte", "cidade_destino": "Porto Alegre", "data": "2025-11-05T08:45:00"},
+    {"id_voo": 4, "cidade_origem": "Nova York", "cidade_destino": "São Paulo", "data": "2025-11-20T22:00:00"},
+    {"id_voo": 5, "cidade_origem": "Lisboa", "cidade_destino": "Recife", "data": "2025-12-01T15:10:00"},
 ]
 
 DADOS_HOTEIS_FIXOS = [
@@ -183,14 +183,22 @@ if __name__ == "__main__":
                         "data_reserva", to_timestamp(col("data_reserva")))
 
                     joined_hotel = pf.join(df_hoteis_master, df_hoteis, "id_hotel")
-                    all_stats_hotel = pf.groupby_stats_hotels(joined_hotel)
-
+                    all_stats_hotel = pf.groupby_city_month_hotels(joined_hotel)
                     stats_city_hotel = pf.groupby_city_hotels(all_stats_hotel)
-                    stats_month_hotel = pf.groupby_month_hotels(all_stats_hotel)
+                    stats_month_hotel = pf.groupby_month(all_stats_hotel)
 
-                    print(f"Estatísticas de faturamento por mês e companhia:")
+                    joined_voos = pf.join(df_voos_master, df_voos, "id_voo")
+                    all_stats_voos = pf.groupby_city_month_flights(joined_voos)
+                    stats_city_voos = pf.groupby_city_flights(all_stats_voos)
+                    stats_month_voos = pf.groupby_month(all_stats_voos)
+
+                    print(f"Estatísticas de faturamento de hotéis por mês e companhia:")
                     stats_month_hotel.show()
-                    print(f"Estatísticas de faturamento por cidade e companhia:")
+                    print(f"Estatísticas de faturamento de hotéis por cidade e companhia:")
+                    stats_city_hotel.show()
+                    print(f"Estatísticas de faturamento de voos por mês e companhia:")
+                    stats_month_hotel.show()
+                    print(f"Estatísticas de faturamento de voos por cidade e companhia:")
                     stats_city_hotel.show()
 
                     # Remove os dados que acabaram de ser processados da lista Redis

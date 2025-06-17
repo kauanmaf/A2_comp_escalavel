@@ -16,11 +16,11 @@ random.seed(42)
 
 # --- DADOS FIXOS SIMULANDO AS TABELAS DO BANCO ---
 DADOS_VOOS_FIXOS = [
-    {"id_voo": 1, "cidade_ida": "São Paulo", "cidade_volta": "Rio de Janeiro", "data": "2025-10-15T10:00:00"},
-    {"id_voo": 2, "cidade_ida": "Rio de Janeiro", "cidade_volta": "Salvador", "data": "2025-10-16T12:30:00"},
-    {"id_voo": 3, "cidade_ida": "Belo Horizonte", "cidade_volta": "Porto Alegre", "data": "2025-11-05T08:45:00"},
-    {"id_voo": 4, "cidade_ida": "Nova York", "cidade_volta": "São Paulo", "data": "2025-11-20T22:00:00"},
-    {"id_voo": 5, "cidade_ida": "Lisboa", "cidade_volta": "Recife", "data": "2025-12-01T15:10:00"},
+    {"id_voo": 1, "cidade_origem": "São Paulo", "cidade_destino": "Rio de Janeiro", "data": "2025-10-15T10:00:00"},
+    {"id_voo": 2, "cidade_origem": "Rio de Janeiro", "cidade_destino": "Salvador", "data": "2025-10-16T12:30:00"},
+    {"id_voo": 3, "cidade_origem": "Belo Horizonte", "cidade_destino": "Porto Alegre", "data": "2025-11-05T08:45:00"},
+    {"id_voo": 4, "cidade_origem": "Nova York", "cidade_destino": "São Paulo", "data": "2025-11-20T22:00:00"},
+    {"id_voo": 5, "cidade_origem": "Lisboa", "cidade_destino": "Recife", "data": "2025-12-01T15:10:00"},
 ]
 
 DADOS_HOTEIS_FIXOS = [
