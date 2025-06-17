@@ -72,6 +72,22 @@ def groupby_month(df_stats):
 
     return df_grouped_month
 
+def join_profits(df_month_profits_hotels, df_month_profits_flights):
+    renamed_df_month_profits_hotels = df_month_profits_hotels.withColumnRenamed("sum_valor", "sum_valor_hoteis")
+    renamed_df_month_profits_flights = df_month_profits_flights.withColumnRenamed("sum_valor", "sum_valor_voos")
+
+    joined_profits = renamed_df_month_profits_hotels.join(renamed_df_month_profits_flights,
+                                                          on = ["company_id", "mes_reserva"])
+    
+    return joined_profits
+    
+def sum_profits(joined_profits):
+    df_sum_profits = joined_profits.withColumn(
+        "total_valor", col("sum_valor_hoteis") + col("sum_valor_voos")
+    ).drop("sum_valor_hoteis", "sum_valor_voos")
+
+    return df_sum_profits
+
 def groupby_stars_hotels(df_joined_hotels):
     df_grouped_stars = df_joined_hotels.groupBy(
         "company_id",

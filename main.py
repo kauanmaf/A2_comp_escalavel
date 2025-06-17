@@ -192,7 +192,8 @@ if __name__ == "__main__":
                     stats_city_voos = pf.groupby_city_flights(all_stats_voos)
                     stats_month_voos = pf.groupby_month(all_stats_voos)
 
-                    # TODO: Junção das duas
+                    joined_faturamentos = pf.join_profits(stats_month_hotel, stats_month_voos)
+                    stats_faturamentos_totais = pf.sum_profits(joined_faturamentos)
 
                     stats_stars_hotel = pf.groupby_stars_hotels(joined_hotel)
 
@@ -208,6 +209,8 @@ if __name__ == "__main__":
                     stats_month_hotel.show()
                     print(f"Estatísticas de faturamento de voos por cidade e companhia:")
                     stats_city_hotel.show()
+                    print(f"Estatísticas de faturamento total por mês e companhia:")
+                    stats_faturamentos_totais.show()
                     print(f"Estatísticas de reservas de hotel por estrela e companhia:")
                     stats_stars_hotel.show()
                     print(f"Estatísticas de voos de SP reservados por mês e companhia:")
