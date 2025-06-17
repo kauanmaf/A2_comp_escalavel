@@ -119,6 +119,7 @@ def create_mock_data(spark_session: SparkSession):
     )
     return df_voos, df_reservas_voos, df_hotel_reservations
 
+# função pro join
 def join_flight_and_reservation_data(df_voos: DataFrame, df_reservas_voos: DataFrame) -> DataFrame:
     """
     Performs an inner join between flight details and flight reservations.
@@ -130,6 +131,7 @@ def join_flight_and_reservation_data(df_voos: DataFrame, df_reservas_voos: DataF
     ).withColumnRenamed("data", "flight_date") # Rename 'data' from df_voos to 'flight_date'
 
     return df_joined
+
 
 def group_by_city_month_client_sum_value(df_flight_reservations_detailed: DataFrame) -> DataFrame:
     """

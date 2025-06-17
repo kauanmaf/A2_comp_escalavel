@@ -1,14 +1,9 @@
-from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, count, avg, to_date, when, lit, date_format, sum
-from pyspark.sql.types import StringType, DoubleType, TimestampType, IntegerType
+from pyspark.sql import SparkSession, DataFrame
+from pyspark.sql.functions import col, to_date, date_format, count, sum, avg
+from pyspark.sql.types import IntegerType, StringType, DoubleType
 from pyspark.sql.window import Window
-from pyspark.sql import SparkSession
-import json
-import random
 from datetime import datetime, timedelta
-
-# Initialize Spark Session (This should be done in your Spark environment)
-spark = SparkSession.builder.appName("TravelDataProcessor").getOrCreate()
+import random
 
 # Mock data creation function (for testing and demonstration purposes)
 def create_mock_data(spark_session: SparkSession):
@@ -132,6 +127,78 @@ def create_mock_data(spark_session: SparkSession):
     return df_voos, df_reservas_voos, df_hoteis, df_reservas_hoteis
 
 
+def join_flight_and_reservation_data(df_voos: DataFrame, df_reservas_voos: DataFrame) -> DataFrame:
+    """
+    Performs an inner join between flight details and flight reservations.
+    """
+    df_joined = df_reservas_voos.join(
+        df_voos,
+        on="id_voo",
+        how="inner"
+    ).withColumnRenamed("data", "flight_date") # Rename 'data' from df_voos to 'flight_date'
+
+    return df_joined
+
+def filter_sao_paulo_data(df_flight_reservations_detailed: DataFrame) -> DataFrame:
+    """
+    Filters flight data relevant to São Paulo (origin or destination), assuming the flight
+    and reservation data are already joined.
+    """
+    # Filter for flights where either 'cidade_origem' or 'cidade_destino' is 'São Paulo'
+    df_sp_relevant_flights = df_flight_reservations_detailed.filter(
+        (col("cidade_origem") == "São Paulo") | (col("cidade_destino") == "São Paulo")
+    )
+    return df_sp_relevant_flights
+
+def get_daily_grouping_sp(df_sp_relevant_flights: DataFrame) -> DataFrame:
+    """
+    Counts daily flights arriving/departing São Paulo, segregated by company.
+    This function expects a pre-filtered DataFrame containing only São Paulo relevant flights.
+    """
+    # Ensure 'event_date' is derived from 'data_reserva' for grouping
+    df_with_event_date = df_sp_relevant_flights.withColumn(
+        "event_date", to_date(col("data_reserva"))
+    )
+
+    # Group by event_date and company_id to count total flights
+    return df_with_event_date.groupBy("event_date", "company_id") \
+                            .agg(count("*").alias("total_flights_daily_sp"))
+
+def get_monthly_grouping_sp(df_sp_relevant_flights: DataFrame) -> DataFrame:
+    """
+    Counts monthly flights arriving/departing São Paulo, segregated by company.
+    """
+    # Extract year-month string (e.g., '2025-10') from 'data_reserva' for monthly grouping
+    df_with_month = df_sp_relevant_flights.withColumn(
+        "year_month", date_format(to_date(col("data_reserva")), "yyyy-MM")
+    )
+
+    # Group by year_month and company_id to count total flights for the month
+    return df_with_month.groupBy("year_month", "company_id") \
+                        .agg(count("*").alias("total_flights_monthly_sp"))
+
+def calculate_ponte_aerea_moving_average(df_flight_reservations_detailed: DataFrame) -> DataFrame:
+    """
+    Calculates the moving average price for "Ponte Aérea" flights (São Paulo <-> Rio de Janeiro), segregated by client.
+    It takes the already joined flight and reservation details as input.
+    """
+    # Filter for "Ponte Aérea" flights from the detailed flight reservations DataFrame
+    # Corrected filter to ensure consistency in "Rio de Janeiro" spelling
+    df_ponte_aerea = df_flight_reservations_detailed.filter(
+        ((col("cidade_origem") == "São Paulo") & (col("cidade_destino") == "Rio de Janeiro")) |
+        ((col("cidade_origem") == "Rio de Janeiro") & (col("cidade_destino") == "São Paulo"))
+    )
+
+    # Use 'data_reserva' for ordering in the window function, as this is the event timestamp
+    window_spec_ponte_aerea = Window.partitionBy("company_id", "cidade_origem", "cidade_destino").orderBy(to_date("data_reserva")).rowsBetween(-7, 0)
+    
+    moving_average_ponte_aerea = df_ponte_aerea.withColumn(
+        "moving_avg_price_ponte_aerea",
+        avg("valor").over(window_spec_ponte_aerea) # Use 'valor' from reservas_voos
+    )
+    return moving_average_ponte_aerea
+
+
 def group_by_flight_city_month_client_sum_value(df_flight_reservations_detailed: DataFrame) -> DataFrame:
     """
     Groups flight reservation data by origin city, destination city, month, and client,
@@ -170,6 +237,16 @@ def group_by_flight_month_reservation_sum_value_top_10(df_flight_reservations_de
     # Order by total_valor_reservas_mensal descending and select top 10
     return df_sum_by_month.orderBy(col("total_valor_reservas_mensal").desc()).limit(10)
 
+def join_hotel_and_reservation_data(df_hoteis: DataFrame, df_reservas_hoteis: DataFrame) -> DataFrame:
+    """
+    Performs an inner join between hotel details and hotel reservations.
+    """
+    df_joined = df_reservas_hoteis.join(
+        df_hoteis,
+        on="id_hotel",
+        how="inner"
+    )
+    return df_joined
 
 def group_by_hotel_city_month_sum_value(df_hotel_reservations_detailed: DataFrame) -> DataFrame:
     """
@@ -206,72 +283,108 @@ def group_by_month_hotel_reservation_sum_value_top_10(df_hotel_reservations_deta
     # Order by total_valor_reservas_hoteis_mensal descending and select top 10
     return df_sum_by_month.orderBy(col("total_valor_reservas_hoteis_mensal").desc()).limit(10)
 
+def calculate_hotel_reservations_by_stars_moving_average(df_hotel_reservations_detailed: DataFrame) -> DataFrame:
+    """
+    Calculates the moving average number of hotel reservations by hotel star rating.
+    """
+    # Cast data_reserva to date type for window ordering
+    df_with_date = df_hotel_reservations_detailed.withColumn("data_reserva_date", to_date(col("data_reserva")))
 
-if __name__ == "__main__":
-    spark = SparkSession.builder.appName("TravelDataProcessor").getOrCreate()
+    # Define window for moving average: partition by stars, order by reservation date, 7-day window
+    window_spec = Window.partitionBy("estrelas").orderBy("data_reserva_date").rowsBetween(-7, 0)
 
-    # Create mock dataframes for flights AND hotels
+    # Calculate moving average of total reservations for each star rating
+    df_moving_avg_reservations = df_with_date.groupBy("estrelas", "data_reserva_date") \
+                                            .agg(count("id_reserva_hotel").alias("daily_reservations")) \
+                                            .withColumn("moving_avg_reservations_7_day", 
+                                                        avg("daily_reservations").over(window_spec))
+    return df_moving_avg_reservations
+
+def get_hotel_reservations_by_month(df_hotel_reservations_detailed: DataFrame) -> DataFrame:
+    """
+    Counts monthly hotel reservations.
+    """
+    df_with_month = df_hotel_reservations_detailed.withColumn(
+        "year_month", date_format(to_date(col("data_reserva")), "yyyy-MM")
+    )
+    return df_with_month.groupBy("year_month").agg(
+        count("id_reserva_hotel").alias("total_hotel_reservations_monthly")
+    )
+
+
+def main():
+    # Initialize Spark Session
+    spark = SparkSession.builder \
+        .appName("TravelDataProcessing") \
+        .getOrCreate()
+
+    # Create mock data
     df_voos, df_reservas_voos, df_hoteis, df_reservas_hoteis = create_mock_data(spark)
 
-    print("--- df_voos Schema and Sample Data ---")
-    df_voos.show(5, truncate=False)
 
-    print("\n--- df_reservas_voos Schema and Sample Data ---")
-    df_reservas_voos.printSchema()
-    df_reservas_voos.show(5, truncate=False)
+    # Join Voos and Res. Voos
+    df_joined_flights = join_flight_and_reservation_data(df_voos, df_reservas_voos)
+    print("Joined Flight and Reservation Data:")
+    df_joined_flights.show(5)
 
-    # NEW: Show Hotel DataFrames
-    print("\n--- df_hoteis Schema and Sample Data ---")
-    df_hoteis.printSchema()
-    df_hoteis.show(5, truncate=False)
+    # GroupBy (cidade mês, cliente) SUM (valor)
+    df_grouped_flight_value = group_by_flight_city_month_client_sum_value(df_joined_flights)
+    print("Grouped Flight Value by City, Month, Client:")
+    df_grouped_flight_value.show(5)
 
-    print("\n--- df_reservas_hoteis Schema and Sample Data ---")
-    df_reservas_hoteis.printSchema()
-    df_reservas_hoteis.show(5, truncate=False)
+    # GroupBy mes Reserva, sum(valor) select 10
+    df_top_10_flight_months = group_by_flight_month_reservation_sum_value_top_10(df_joined_flights)
+    print("Top 10 Flight Reservation Months by Value:")
+    df_top_10_flight_months.show(5)
 
-    # --- Flight Data Processing ---
-    print("\n--- Starting Flight Data Processing ---")
+    # Filter (São Paulo)
+    df_sp_filtered_flights = filter_sao_paulo_data(df_joined_flights)
+    print("São Paulo Filtered Flight Data:")
+    df_sp_filtered_flights.show(5)
 
-    # 1. Join flight and reservation data (Join Voos)
-    df_flight_reservations_detailed = join_flight_and_reservation_data(df_voos, df_reservas_voos)
-    print("\n--- df_flight_reservations_detailed (joined) Schema and Sample Data ---")
-    df_flight_reservations_detailed.printSchema()
-    df_flight_reservations_detailed.show(5, truncate=False)
+    # N° Reservas por mês (from São Paulo filtered data)
+    df_sp_monthly_reservations = get_monthly_grouping_sp(df_sp_filtered_flights)
+    print("Monthly Flight Reservations for São Paulo:")
+    df_sp_monthly_reservations.show(5)
 
-    # 2. GroupBy (cidade mês, cliente) SUM (valor) for Flights
-    df_grouped_by_flight_city_month_client = group_by_flight_city_month_client_sum_value(df_flight_reservations_detailed)
-    print("\n--- Grouped by Flight City, Month, Client, Sum of Value ---")
-    df_grouped_by_flight_city_month_client.printSchema()
-    df_grouped_by_flight_city_month_client.show(5, truncate=False)
-
-    # 3. GroupBy mes Reserva, sum(valor) select 10 for Flights
-    df_top_10_monthly_flight_reservations = group_by_flight_month_reservation_sum_value_top_10(df_flight_reservations_detailed)
-    print("\n--- Top 10 Monthly Flight Reservations by Total Value ---")
-    df_top_10_monthly_flight_reservations.printSchema()
-    df_top_10_monthly_flight_reservations.show(truncate=False)
+    # Filter (Voos e RJ) - This seems to imply "Ponte Aérea" logic from your diagram
+    # This leads to "Média Móvel Ponte Aérea"
+    df_ponte_aerea_moving_avg = calculate_ponte_aerea_moving_average(df_joined_flights)
+    print("Moving Average Price for Ponte Aérea:")
+    df_ponte_aerea_moving_avg.show(5)
 
 
-    # --- Hotel Data Processing ---
-    print("\n\n--- Starting Hotel Data Processing ---")
+    # --- Hotel Data Processing (Right side of the diagram, "Repete do outro lado") ---
 
-    # 1. Join hotel and reservation data (Join Hoteis)
-    df_hotel_reservations_detailed = join_hotel_and_reservation_data(df_hoteis, df_reservas_hoteis)
-    print("\n--- df_hotel_reservations_detailed (joined) Schema and Sample Data ---")
-    df_hotel_reservations_detailed.printSchema()
-    df_hotel_reservations_detailed.show(5, truncate=False)
+    # Join Hoteis and Res. Hoteis
+    df_joined_hoteis = join_hotel_and_reservation_data(df_hoteis, df_reservas_hoteis)
+    print("Joined Hotel and Reservation Data:")
+    df_joined_hoteis.show(5)
 
-    # 2. GroupBy (cidade mês, cliente) SUM (valor) for Hotels
-    df_grouped_by_hotel_city_month_client = group_by_hotel_city_month_sum_value(df_hotel_reservations_detailed)
-    print("\n--- Grouped by Hotel City, Month, Client, Sum of Value ---")
-    df_grouped_by_hotel_city_month_client.printSchema()
-    df_grouped_by_hotel_city_month_client.show(5, truncate=False)
+    # Agrupamento (Cidades) - Equivalent to GroupBy (cidade mês, cliente) SUM (valor) for hotels
+    df_grouped_hotel_value = group_by_hotel_city_month_sum_value(df_joined_hoteis)
+    print("Grouped Hotel Value by City, Month, Client:")
+    df_grouped_hotel_value.show(5)
 
-    # 3. GroupBy mes Reserva, sum(valor) select 10 for Hotels
-    df_top_10_monthly_hotel_reservations = group_by_month_hotel_reservation_sum_value_top_10(df_hotel_reservations_detailed)
-    print("\n--- Top 10 Monthly Hotel Reservations by Total Value ---")
-    df_top_10_monthly_hotel_reservations.printSchema()
-    df_top_10_monthly_hotel_reservations.show(truncate=False)
+    # Mês + Reservado - Equivalent to GroupBy mes Reserva, sum(valor) select 10 for hotels
+    df_top_10_hotel_months = group_by_month_hotel_reservation_sum_value_top_10(df_joined_hoteis)
+    print("Top 10 Hotel Reservation Months by Value:")
+    df_top_10_hotel_months.show(5)
+
+    # N° Reservas por estrela -> Estrelas -> Média Móvel N° Reservas
+    # This implies a calculation of reservations grouped by stars, then a moving average on that.
+    df_moving_avg_hotel_reservations_by_stars = calculate_hotel_reservations_by_stars_moving_average(df_joined_hoteis)
+    print("Moving Average of Hotel Reservations by Star Rating:")
+    df_moving_avg_hotel_reservations_by_stars.show(5)
+
+    # N° Reservas por mês (for Hotels)
+    df_hotel_monthly_reservations = get_hotel_reservations_by_month(df_joined_hoteis)
+    print("Monthly Hotel Reservations:")
+    df_hotel_monthly_reservations.show(5)
 
 
     # Stop Spark Session
     spark.stop()
+
+if __name__ == "__main__":
+    main()
