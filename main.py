@@ -8,6 +8,7 @@ import json
 import time
 import datetime
 import pipeline_functions as pf
+import psycopg2
 import threading
 import uuid
 import db_stats_utils
@@ -59,22 +60,46 @@ voos_master_schema = StructType([
     StructField("data", StringType(), False) # Data do voo como string (será convertida depois se precisar de Timestamp)
 ])
 
-# --- DADOS FIXOS SIMULANDO AS TABELAS DO BANCO ---
-DADOS_VOOS_FIXOS = [
-    {"id_voo": 1, "cidade_origem": "São Paulo", "cidade_destino": "Rio de Janeiro", "data": "2025-10-15T10:00:00"},
-    {"id_voo": 2, "cidade_origem": "Rio de Janeiro", "cidade_destino": "Salvador", "data": "2025-10-16T12:30:00"},
-    {"id_voo": 3, "cidade_origem": "Belo Horizonte", "cidade_destino": "Porto Alegre", "data": "2025-11-05T08:45:00"},
-    {"id_voo": 4, "cidade_origem": "Nova York", "cidade_destino": "São Paulo", "data": "2025-11-20T22:00:00"},
-    {"id_voo": 5, "cidade_origem": "Lisboa", "cidade_destino": "Recife", "data": "2025-12-01T15:10:00"},
-]
+# Canal para ouvir solicitações de estatísticas
+REDIS_CHANNEL_STAT_REQUEST = 'stat_requests'
 
-DADOS_HOTEIS_FIXOS = [
-    {"id_hotel": 1, "cidade": "Rio de Janeiro", "estrelas": 5},
-    {"id_hotel": 2, "cidade": "Salvador", "estrelas": 4},
-    {"id_hotel": 3, "cidade": "Porto Alegre", "estrelas": 4},
-    {"id_hotel": 4, "cidade": "São Paulo", "estrelas": 5},
-    {"id_hotel": 5, "cidade": "Recife", "estrelas": 3},
-]
+# Esquema para as mensagens de solicitação de estatísticas
+stat_request_schema = StructType([
+    StructField("company_id", StringType(), True),
+    StructField("request_id", StringType(), True),
+    StructField("timestamp", StringType(), True)
+])
+
+# Variáveis globais para compartilhar o SparkSession e o cliente Redis
+global_spark_session = None
+global_redis_client = None
+
+def listen_for_stat_requests(spark: SparkSession, redis_conn: redis.Redis):
+    """
+    Função que será executada em uma thread separada para escutar solicitações de estatísticas.
+    """
+    pubsub = redis_conn.pubsub()
+    pubsub.subscribe(REDIS_CHANNEL_STAT_REQUEST)
+    print(f"Inscrito no canal Redis '{REDIS_CHANNEL_STAT_REQUEST}' para solicitações de estatísticas.")
+
+    for message in pubsub.listen():
+        if message['type'] == 'message':
+            try:
+                data = json.loads(message['data'])
+                print(f"Mensagem de solicitação de estatísticas recebida: {data}")
+                
+                # Exemplo de como você processaria a solicitação:
+                company_id = data.get('company_id')
+                request_id = data.get('request_id')
+
+                print(f"Processando solicitação de '{company_id}'. Request ID: {request_id}")
+
+                print(f"Lógica para calcular e devolver estatísticas para {company_id} seria executada agora.")
+                
+            except json.JSONDecodeError as e:
+                print(f"Erro ao decodificar mensagem JSON do Redis: {e}")
+            except Exception as e:
+                print(f"Erro inesperado ao processar solicitação de estatísticas: {e}")
 
 # Canal para ouvir solicitações de estatísticas
 REDIS_CHANNEL_STAT_REQUEST = 'stat_requests'
@@ -123,23 +148,25 @@ if __name__ == "__main__":
     spark = SparkSession.builder \
         .appName("TravelBatchProcessorPersistent") \
         .getOrCreate()
-    
-    # Criando DataFrames usando inferência de esquema
-    df_voos_master = spark.createDataFrame(DADOS_VOOS_FIXOS, schema=voos_master_schema)
-    df_hoteis_master = spark.createDataFrame(DADOS_HOTEIS_FIXOS, schema=hoteis_master_schema)
-    df_voos_master = df_voos_master.withColumn("data", to_timestamp(col("data")))
-
-    print("SparkSession criada com sucesso para processamento em lote persistente!")
-    print("\nDataFrame Master de Voos carregado:")
-    df_voos_master.show()
-    df_voos_master.printSchema()
-    print("\nDataFrame Master de Hoteis carregado:")
-    df_hoteis_master.show()
-    df_hoteis_master.printSchema()
 
     REDIS_HOST = os.getenv('REDIS_HOST', 'redis-server')
     REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
     MONITOR_INTERVAL = int(os.getenv('MONITOR_INTERVAL_SECONDS', 5))
+
+    # PostgreSQL connection parameters (replace with your actual credentials)
+    PG_HOST = os.getenv('PG_DATA_HOST', 'postgres-data')  # Nome do serviço no docker-compose
+    PG_PORT = os.getenv('PG_DATA_PORT', '5432')
+    PG_DATABASE = os.getenv('PG_DATA_DB', 'dados_gerais')
+    PG_USER = os.getenv('PG_DATA_USER', 'emap')
+    PG_PASSWORD = os.getenv('PG_DATA_PASSWORD', 'emap123')
+
+    PG_CONN_PARAMS = {
+        'host': PG_HOST,
+        'port': PG_PORT,
+        'database': PG_DATABASE,
+        'user': PG_USER,
+        'password': PG_PASSWORD
+    }
     
     # Lista de chaves do Redis e seus thresholds
     list_thresholds_json = os.getenv('LIST_THRESHOLDS_JSON', '{"raw_hotels": 50, "raw_flights": 50}')
@@ -162,6 +189,8 @@ if __name__ == "__main__":
     stat_listener_thread.start()
     print("Thread de escuta de estatísticas iniciada.")
 
+    conn = None
+
     # Loop principal que mantém o Spark job acordado
     while True:
         try:
@@ -169,6 +198,15 @@ if __name__ == "__main__":
             #     global_redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
             #     global_redis_client.ping()
             #     print(f"Conectado ao Redis em {REDIS_HOST}:{REDIS_PORT}.")
+
+            if conn is None:
+                    conn = psycopg2.connect(
+                        host=PG_HOST,
+                        port=PG_PORT,
+                        database=PG_DATABASE,
+                        user=PG_USER,
+                        password=PG_PASSWORD
+                    )
 
             total_rows = 0
             
@@ -213,9 +251,9 @@ if __name__ == "__main__":
 
                 # Cria um DataFrame a partir dos dados lidos
                 if parsed_data_hoteis and parsed_data_voos:
+
                     df_raw_redis_message_hoteis = spark.createDataFrame(parsed_data_hoteis, schema=raw_redis_message_schema)
                     df_raw_redis_message_voos = spark.createDataFrame(parsed_data_voos, schema=raw_redis_message_schema)
-                    
                     print(f"DataFrames raw criados")
 
                     # Parseia o JSON na coluna 'data' usando o schema de payload
@@ -248,6 +286,36 @@ if __name__ == "__main__":
                         "data_reserva", to_timestamp(col("data_reserva")))     
                     df_voos = df_voos.withColumn(
                         "data_reserva", to_timestamp(col("data_reserva")))
+                    
+
+                    set_key_hoteis = pf.create_redis_set(df_hoteis,
+                                                        "id_hotel", 
+                                                        global_redis_client)
+                    
+                    set_key_voos = pf.create_redis_set(df_voos,
+                                                       "id_voo",
+                                                       global_redis_client)
+                    
+                    df_hoteis_master = pf.postgres_by_redis_set(set_key_hoteis,
+                                                                "hoteis",
+                                                                "id_hotel",
+                                                                spark,
+                                                                global_redis_client,
+                                                                conn)
+
+                    df_voos_master = pf.postgres_by_redis_set(set_key_voos,
+                                                                "voos",
+                                                                "id_voo",
+                                                                spark,
+                                                                global_redis_client,
+                                                                conn)
+                    
+                    # Após carregar df_voos_master
+                    df_voos_master = df_voos_master \
+                        .withColumnRenamed("cidade_ida", "cidade_origem") \
+                        .withColumnRenamed("cidade_volta", "cidade_destino")
+                    
+                    df_hoteis_master.show()
 
                     joined_hotel = pf.join(df_hoteis_master, df_hoteis, "id_hotel")
                     all_stats_hotel = pf.groupby_city_month_hotels(joined_hotel)

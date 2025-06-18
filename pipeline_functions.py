@@ -199,61 +199,45 @@ def create_redis_set(spark_df: DataFrame, id_column_name: str, redis_conn: redis
 
     return redis_set_key
 
-def postgres_by_redis_set(redis_set_key: str, table_name: str, id_column_name_pg: str, spark_session: SparkSession, redis_conn: redis.Redis, pg_conn_params: dict) -> DataFrame:
+def postgres_by_redis_set(redis_set_key, tabela, coluna_id, spark, redis_conn, pg_conn):
     """
-    Fetches data from a PostgreSQL table using IDs stored in a Redis set.
-    
-    Args:
-        redis_set_key (str): The key of the Redis set containing the IDs.
-        table_name (str): The name of the PostgreSQL table to query.
-        id_column_name_pg (str): The name of the ID column in the PostgreSQL table.
-        spark_session (SparkSession): The SparkSession object.
-        redis_conn (redis.Redis): The Redis connection object.
-        pg_conn_params (dict): Dictionary containing PostgreSQL connection parameters (e.g., 'host', 'database', 'user', 'password').
-
-    Returns:
-        DataFrame: A Spark DataFrame containing the fetched data, or None if an error occurs.
+    Busca dados do PostgreSQL usando IDs de um set Redis, usando conexão aberta.
+    Retorna um DataFrame Spark.
     """
+    # Pega a lista de ids
     try:
-        ids_from_redis = list(redis_conn.smembers(redis_set_key))
-        if not ids_from_redis:
+        ids = list(redis_conn.smembers(redis_set_key))
+        if not ids:
             print(f"O set '{redis_set_key}' está vazio ou não existe.")
             return None
 
-        # Decode bytes to strings
-        ids_from_redis = [id_val.decode('utf-8') for id_val in ids_from_redis]
-        
-        print(f"{len(ids_from_redis)} IDs recuperados do set '{redis_set_key}'")
+        # Decodifica se vier como bytes e converte para inteiro
+        ids = [int(id.decode('utf-8')) if isinstance(id, bytes) else int(id) for id in ids]
+        print(f"{len(ids)} IDs recuperados do set '{redis_set_key}'")
 
     except redis.exceptions.ConnectionError as e:
         print(f"Erro ao conectar ao Redis: {e}")
         return None
     except Exception as e:
-        print(f"Erro ao recuperar IDs do Redis: {e}")
+        print(f"Erro ao processar IDs do Redis: {e}")
         return None
 
-    # Connect to PostgreSQL and fetch data
+    # Consulta no PostgreSQL
     try:
-        # PostgreSQL connection string for Spark
-        jdbc_url = f"jdbc:postgresql://{pg_conn_params['host']}:{pg_conn_params['port']}/{pg_conn_params['database']}"
-        
-        # Convert list of IDs to a comma-separated string for the IN clause
-        # Ensure IDs are properly quoted if they are string types in PG
-        ids_str = ','.join([f"'{id_val}'" for id_val in ids_from_redis]) if isinstance(ids_from_redis[0], str) else ','.join(ids_from_redis)
-        
-        # Build the query
-        query = f"(SELECT * FROM {table_name} WHERE {id_column_name_pg} IN ({ids_str})) as data"
+        cur = pg_conn.cursor()
+        # Usa = ANY para lista de ids inteiros
+        sql = f"SELECT * FROM {tabela} WHERE {coluna_id} = ANY(%s);"
+        cur.execute(sql, (ids,))
+        resultados = cur.fetchall()
+        colunas = [desc[0] for desc in cur.description]
+        print(f"{len(resultados)} registros encontrados na tabela '{tabela}' com base nos IDs.")
+        cur.close()
 
-        df = spark_session.read \
-            .format("jdbc") \
-            .option("url", jdbc_url) \
-            .option("dbtable", query) \
-            .option("user", pg_conn_params['user']) \
-            .option("password", pg_conn_params['password']) \
-            .load()
-        
-        print(f"DataFrame do PostgreSQL para a tabela '{table_name}' criado com sucesso.")
-        
+        if not resultados:
+            print("Nenhum registro encontrado no PostgreSQL.")
+            return None
+
+        df = spark.createDataFrame(resultados, schema=colunas)
         return df
 
     except Exception as e:
