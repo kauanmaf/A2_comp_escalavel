@@ -4,6 +4,7 @@ import psycopg2
 import streamlit as st
 import plotly.express as px
 import calendar
+import unicodedata
 
 # --- Funções de Conexão e Carregamento de Dados ---
 
@@ -33,6 +34,16 @@ def get_month_name(month_num):
     except IndexError:
         return None
 
+# --- Paleta de Cores Reduzida ---
+# Definimos as cores que serão usadas em todo o dashboard
+COLOR_PALETTE = {
+    "primary_blue": "#3498DB", # Azul Escuro
+    "emerald_green": "#2ECC71", # Verde Esmeralda
+    "vibrant_orange": "#E67E22", # Laranja Vibrante
+    "soft_red": "#E74C3C",   # Vermelho Suave
+    "neutral_grey": "#BDC3C7" # Cinza Neutro
+}
+
 # --- Funções de Plotagem Específicas para Cada Tabela ---
 
 def plot_stats_month_hotel(df, config):
@@ -44,38 +55,29 @@ def plot_stats_month_hotel(df, config):
     df['month_name'] = df['month_num'].apply(get_month_name)
     df = df.sort_values(by='month_num')
     fig = px.line(df, x='month_name', y='sum_valor', title=config["title"], markers=True)
+    fig.update_traces(line_color=COLOR_PALETTE["vibrant_orange"]) # Laranja
     fig.update_layout(xaxis_title="Mês de Reserva", yaxis_title="Valor Total")
     return fig
 
 def plot_stats_city_hotel(df, config):
     """Plota até 10 cidades com maior faturamento em hotéis (barras horizontais, sempre ao menos 4 cidades: SP, RJ, BH, Salvador)."""
-    import pandas as pd
-    import plotly.express as px
-    import unicodedata
-
     def normalize(s):
         return unicodedata.normalize('NFKD', s).encode('ASCII', 'ignore').decode('ASCII').lower()
 
     top_n = min(config.get("top_n", 10), 10)
     cidades_extras = ["São Paulo", "Rio de Janeiro", "Belo Horizonte", "Salvador"]
 
-    # Normaliza nomes das cidades presentes
     cidades_presentes_norm = [normalize(c) for c in df['cidade'].unique()]
-
-    # Adiciona cidades extras só se não estiverem presentes (ignorando acento/caixa)
     cidades_faltando = [c for c in cidades_extras if normalize(c) not in cidades_presentes_norm]
     df_extra = pd.DataFrame({'cidade': cidades_faltando, 'sum_valor': [0] * len(cidades_faltando)})
     df = pd.concat([df, df_extra], ignore_index=True)
 
-    # Seleciona até top_n cidades com maior faturamento
     df_sorted = df.sort_values(by='sum_valor', ascending=True).head(top_n)
 
-    # Garante que as cidades extras estejam presentes no gráfico final
     for cidade in cidades_extras:
         if normalize(cidade) not in [normalize(c) for c in df_sorted['cidade']]:
             df_sorted = pd.concat([df_sorted, pd.DataFrame({'cidade': [cidade], 'sum_valor': [0]})], ignore_index=True)
 
-    # Remove duplicatas mantendo a ordem (considerando normalização)
     seen = set()
     rows = []
     for _, row in df_sorted.iterrows():
@@ -84,8 +86,6 @@ def plot_stats_city_hotel(df, config):
             seen.add(norm)
             rows.append(row)
     df_sorted = pd.DataFrame(rows)
-
-    # Garante que só tenha no máximo top_n cidades
     df_sorted = df_sorted.head(top_n)
 
     fig = px.bar(
@@ -93,7 +93,8 @@ def plot_stats_city_hotel(df, config):
         x='sum_valor',
         y='cidade',
         orientation='h',
-        title=config["title"]
+        title=config["title"],
+        color_discrete_sequence=[COLOR_PALETTE["primary_blue"]] # Usa uma única cor para as barras
     )
     fig.update_layout(
         xaxis_title="Faturamento",
@@ -110,20 +111,20 @@ def plot_stats_month_voos(df, config):
     df['month_name'] = df['month_num'].apply(get_month_name)
     df = df.sort_values(by='month_num')
     fig = px.line(df, x='month_name', y='sum_valor', title=config["title"])
-    fig.update_layout(xaxis_title="Mês de Reserva")
+    fig.update_traces(line_color=COLOR_PALETTE["primary_blue"]) # Azul
+    fig.update_layout(xaxis_title="Mês de Reserva" , yaxis_title = "Faturamento")
     return fig
 
 def plot_stats_city_voos(df, config):
     """Plota até 10 cidades com maior faturamento em voos (barras horizontais)."""
-    import plotly.express as px
-
     df_sorted = df.sort_values(by='sum_valor', ascending=True).head(10)
     fig = px.bar(
         df_sorted,
         x='sum_valor',
         y='cidade_destino',
         orientation='h',
-        title=config["title"]
+        title=config["title"],
+        color_discrete_sequence=[COLOR_PALETTE["primary_blue"]] # Usa uma única cor para as barras
     )
     fig.update_layout(
         xaxis_title="Faturamento",
@@ -140,6 +141,7 @@ def plot_stats_faturamentos_totais(df, config):
     df['month_name'] = df['month_num'].apply(get_month_name)
     df = df.sort_values(by='month_num')
     fig = px.line(df, x='month_name', y='total_valor', title=config["title"])
+    fig.update_traces(line_color=COLOR_PALETTE["emerald_green"]) # Verde
     fig.update_layout(xaxis_title="Mês de Reserva")
     return fig
 
@@ -153,18 +155,25 @@ def plot_stats_ticket_medio(df, config):
         axis=1
     )
     fig = px.bar(df, x='cidade_destino', y='ticket_medio', title=config["title"])
+    fig.update_traces(marker_color=COLOR_PALETTE["emerald_green"]) # Verde
     return fig
 
 def plot_stats_stars_hotel(df, config):
     """Plota o número de reservas por estrelas de hotel (sempre mostra 1 a 5 no eixo X)."""
     star_order = [1, 2, 3, 4, 5]
-    # Cria DataFrame com todas as estrelas
     full_stars_df = pd.DataFrame({'estrelas': star_order})
-    # Faz merge para garantir todas as categorias
     df = pd.merge(full_stars_df, df, on='estrelas', how='left')
     df['num_reservas'] = df['num_reservas'].fillna(0).astype(int)
     df['estrelas'] = pd.Categorical(df['estrelas'], categories=star_order, ordered=True)
-    fig = px.bar(df, x='estrelas', y='num_reservas', title=config["title"])
+    fig = px.bar(df, x='estrelas', y='num_reservas', title=config["title"],
+                 color='estrelas', # Color by number of stars
+                 color_discrete_map={ # Mapeamento específico para estrelas
+                     1: COLOR_PALETTE["soft_red"],
+                     2: COLOR_PALETTE["soft_red"],
+                     3: COLOR_PALETTE["vibrant_orange"],
+                     4: COLOR_PALETTE["primary_blue"],
+                     5: COLOR_PALETTE["emerald_green"]
+                 })
     fig.update_xaxes(type='category', categoryorder='array', categoryarray=star_order)
     return fig
 
@@ -182,7 +191,8 @@ def plot_stats_estrelas_medias_mes(df, config):
     df['month_name'] = df['month_num'].apply(get_month_name)
     df = df.sort_values(by='month_num')
     fig = px.line(df, x='month_name', y='media_estrelas', title=config["title"])
-    fig.update_layout(xaxis_title="Mês de Reserva")
+    fig.update_traces(line_color=COLOR_PALETTE["soft_red"]) # Vermelho
+    fig.update_layout(xaxis_title="Mês de Reserva", yaxis_title = "Média de Estrelas")
     return fig
 
 def plot_stats_month_sp_voos(df, config):
@@ -194,32 +204,37 @@ def plot_stats_month_sp_voos(df, config):
     df['month_name'] = df['month_num'].apply(get_month_name)
     df = df.sort_values(by='month_num')
     fig = px.line(df, x='month_name', y='num_voos_reservados', title=config["title"])
+    fig.update_traces(line_color=COLOR_PALETTE["primary_blue"]) # Azul
     fig.update_layout(xaxis_title="Mês de Reserva")
     return fig
 
 def plot_stats_day_sp_voos(df, config):
-    """Plota uma barra para cada dia, destacando os top 10 dias com mais reservas de voos em SP."""
-    import plotly.express as px
-
-    # Ordena por número de reservas e pega os top N dias
-    top_n = config.get("top_n", 10)
+    """Plota a média móvel dos últimos 7 dias para o número de reservas de voos em SP."""
     df = df.copy()
-    top_days = df.nlargest(top_n, 'num_reservas')['data_reserva']
-    df['categoria'] = df['data_reserva'].apply(lambda x: "Top 10" if x in top_days.values else "Outros")
 
-    # Plota todas as barras, colorindo os top 10 de azul escuro e os outros de azul padrão
-    fig = px.bar(
-        df.sort_values('data_reserva'),
+    # Ensure 'data_reserva' is a datetime object
+    df['data_reserva'] = pd.to_datetime(df['data_reserva'])
+
+    # Sort by date for correct rolling average calculation
+    df = df.sort_values(by='data_reserva')
+
+    # Calculate the 7-day rolling average
+    # min_periods=1 ensures that we get a value for the first 6 days, even if there aren't 7 full days yet
+    df['media_movel_7dias'] = df['num_reservas'].rolling(window=7, min_periods=1).mean()
+
+    # Plotting the rolling average as a line chart
+    fig = px.line(
+        df,
         x='data_reserva',
-        y='num_reservas',
-        color='categoria',
-        color_discrete_map={"Outros": "#1f77b4", "Top 10": "#660000"},
-        title=config["title"]
+        y='media_movel_7dias',
+        title=config["title"],
+        markers=False # Typically, rolling averages don't need markers
     )
+    fig.update_traces(line_color=COLOR_PALETTE["primary_blue"]) # Consistent blue for flight trends
     fig.update_layout(
         xaxis_title="Data da Reserva",
-        yaxis_title="Número de Reservas",
-        legend_title="Categoria"
+        yaxis_title="Média Móvel (7 dias) de Reservas",
+        hovermode="x unified" # Improves tooltip experience
     )
     return fig
 
@@ -263,7 +278,7 @@ TABLE_CONFIG = {
         "plot_func": plot_stats_month_sp_voos
     },
     "stats_day_sp_voos": {
-        "title": "Top 10 Dias com Mais Reservas de Voos em SP", "section": "Voos",
+        "title": "Média Móvel de 7 Dias de Reservas de Voos em SP", "section": "Voos", # Updated title for clarity
         "top_n": 10, "plot_func": plot_stats_day_sp_voos
     },
 }
