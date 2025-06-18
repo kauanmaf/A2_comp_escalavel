@@ -1,7 +1,7 @@
 # main.py
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import from_json, col, count, sum, to_timestamp 
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType, IntegerType
+from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType, IntegerType, LongType
 import os
 import redis
 import json
@@ -21,28 +21,27 @@ while True:
         print("Erro de conexão")
         time.sleep(0.5)
 
-# Definindo os esquemas para os dados aninhados (PAYLOADS DO REDIS)
-# Estes são os schemas para o CONTEÚDO da coluna 'data'
+# Definindo os esquemas para os dados aninhados
 flight_data_payload_schema = StructType([
-    StructField("id_voo", IntegerType(), True), # Ajustado para IntegerType
-    StructField("id_reserva_voo", IntegerType(), True), # Ajustado para IntegerType
+    StructField("id_voo", IntegerType(), True),
+    StructField("id_reserva_voo", IntegerType(), True),
     StructField("valor", DoubleType(), True),
     StructField("data_reserva", StringType(), True)
 ])
 
 hotel_data_payload_schema = StructType([
-    StructField("id_reserva_hotel", IntegerType(), True), # Ajustado para IntegerType
-    StructField("id_hotel", IntegerType(), True), # Ajustado para IntegerType
+    StructField("id_reserva_hotel", IntegerType(), True),
+    StructField("id_hotel", IntegerType(), True),
     StructField("valor", DoubleType(), True),
-    StructField("data_reservada", StringType(), True), # A data dentro do JSON ainda é string
-    StructField("data_reserva", StringType(), True) # A data dentro do JSON ainda é string
+    StructField("data_reservada", StringType(), True),
+    StructField("data_reserva", StringType(), True)
 ])
 
-# Definindo o esquema para os dados brutos recebidos DO REDIS (estrutura da MENSAGEM)
+# Definindo o esquema para os dados brutos recebidos do Redis
 raw_redis_message_schema = StructType([
     StructField("company_id", StringType(), True),
-    StructField("data", StringType(), True), # 'data' é uma STRING JSON
-    StructField("timestamp", TimestampType(), True) # 'timestamp' já vem como TimestampType
+    StructField("data", StringType(), True),
+    StructField("timestamp", TimestampType(), True)
 ])
 
 # Esquema para a base de Hoteis (Master Data)
@@ -57,7 +56,7 @@ voos_master_schema = StructType([
     StructField("id_voo", IntegerType(), False),
     StructField("cidade_origem", StringType(), False),
     StructField("cidade_destino", StringType(), False),
-    StructField("data", StringType(), False) # Data do voo como string (será convertida depois se precisar de Timestamp)
+    StructField("data", StringType(), False)
 ])
 
 # Canal para ouvir solicitações de estatísticas
@@ -256,6 +255,11 @@ if __name__ == "__main__":
                     df_raw_redis_message_voos = spark.createDataFrame(parsed_data_voos, schema=raw_redis_message_schema)
                     print(f"DataFrames raw criados")
 
+                    print("df_raw_redis_message_voos")
+                    df_raw_redis_message_voos.show()
+                    print("df_raw_redis_message_hoteis")
+                    df_raw_redis_message_hoteis.show()
+
                     # Parseia o JSON na coluna 'data' usando o schema de payload
                     df_hoteis = df_raw_redis_message_hoteis.withColumn(
                         "parsed_payload", from_json(col("data"), hotel_data_payload_schema)
@@ -279,6 +283,11 @@ if __name__ == "__main__":
                         col("parsed_payload.data_reserva").alias("data_reserva"),
                     )
 
+                    print("Dados de reservas de voos")
+                    df_voos.show()
+                    print("Dados de reservas de hotéis")
+                    df_hoteis.show()
+
                     # Converte a coluna 'data_reservada' para TimestampType
                     df_hoteis = df_hoteis.withColumn(
                         "data_reservada", to_timestamp(col("data_reservada")))
@@ -287,6 +296,10 @@ if __name__ == "__main__":
                     df_voos = df_voos.withColumn(
                         "data_reserva", to_timestamp(col("data_reserva")))
                     
+                    print("Dados de reservas de voos")
+                    df_voos.show()
+                    print("Dados de reservas de hotéis")
+                    df_hoteis.show()
 
                     set_key_hoteis = pf.create_redis_set(df_hoteis,
                                                         "id_hotel", 
@@ -315,7 +328,10 @@ if __name__ == "__main__":
                         .withColumnRenamed("cidade_ida", "cidade_origem") \
                         .withColumnRenamed("cidade_volta", "cidade_destino")
                     
+                    print("Dataframe master hotéis")
                     df_hoteis_master.show()
+                    print("Dataframe master voos")
+                    df_voos_master.show()
 
                     joined_hotel = pf.join(df_hoteis_master, df_hoteis, "id_hotel")
                     all_stats_hotel = pf.groupby_city_month_hotels(joined_hotel)
@@ -345,26 +361,26 @@ if __name__ == "__main__":
                     stats_month_sp_voos = pf.groupby_month_sp_flights(filtered_sp_voos)
                     stats_day_sp_voos = pf.groupby_day_sp_flights(filtered_sp_voos)
 
-                    print(f"Estatísticas de faturamento de hotéis por mês e companhia:")
-                    stats_month_hotel.show()
-                    print(f"Estatísticas de faturamento de hotéis por cidade e companhia:")
-                    stats_city_hotel.show()
-                    print(f"Estatísticas de faturamento de voos por mês e companhia:")
-                    stats_month_voos.show()
-                    print(f"Estatísticas de faturamento de voos por cidade e companhia:")
-                    stats_city_voos.show()
-                    print(f"Estatísticas de faturamento total por mês e companhia:")
-                    stats_faturamentos_totais.show()
-                    print(f"Estatísticas de faturamento médio por cidade e companhia:")
-                    stats_ticket_medio.show()
-                    print(f"Estatísticas de reservas de hotel por estrela e companhia:")
-                    stats_stars_hotel.show()
-                    print(f"Estatísticas de estrela média dos hotéis por mês e companhia:")
-                    stats_estrelas_medias_mes.show()
-                    print(f"Estatísticas de voos de SP reservados por mês e companhia:")
-                    stats_month_sp_voos.show()
-                    print(f"Estatísticas de reservas de voos de SP por dia e companhia:")
-                    stats_day_sp_voos.show()
+                    # print(f"Estatísticas de faturamento de hotéis por mês e companhia:")
+                    # stats_month_hotel.show()
+                    # print(f"Estatísticas de faturamento de hotéis por cidade e companhia:")
+                    # stats_city_hotel.show()
+                    # print(f"Estatísticas de faturamento de voos por mês e companhia:")
+                    # stats_month_voos.show()
+                    # print(f"Estatísticas de faturamento de voos por cidade e companhia:")
+                    # stats_city_voos.show()
+                    # print(f"Estatísticas de faturamento total por mês e companhia:")
+                    # stats_faturamentos_totais.show()
+                    # print(f"Estatísticas de faturamento médio por cidade e companhia:")
+                    # stats_ticket_medio.show()
+                    # print(f"Estatísticas de reservas de hotel por estrela e companhia:")
+                    # stats_stars_hotel.show()
+                    # print(f"Estatísticas de estrela média dos hotéis por mês e companhia:")
+                    # stats_estrelas_medias_mes.show()
+                    # print(f"Estatísticas de voos de SP reservados por mês e companhia:")
+                    # stats_month_sp_voos.show()
+                    # print(f"Estatísticas de reservas de voos de SP por dia e companhia:")
+                    # stats_day_sp_voos.show()
 
 
                     db_stats_utils.save_stats_dataframe(stats_month_hotel, "stats_month_hotel") 

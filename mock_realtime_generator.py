@@ -59,10 +59,8 @@ class RedisDataGenerator:
 
     def generate_flight_reservation(self) -> Dict[str, Any]:
         """Gera dados de uma reserva de voo"""
-        uuid_hex = uuid.uuid4().hex
-    
         # Convert the full hexadecimal string to a large integer
-        id_reserva_voo = int(uuid_hex, 16) 
+        id_reserva_voo = random.randint(1, 2_000_000_000)
         id_voo = random.randint(*VOO_ID_RANGE)
         valor = round(random.uniform(300, 2500), 2)
         dias_atras = random.randint(0, 30)
@@ -88,10 +86,7 @@ class RedisDataGenerator:
 
         registros = []
         for i in range(num_dias):
-            uuid_hex = uuid.uuid4().hex
-    
-            # Convert the full hexadecimal string to a large integer
-            id_reserva_hotel = int(uuid_hex, 16) 
+            id_reserva_hotel = random.randint(1, 2_000_000_000)
             data_estadia = data_inicial + timedelta(days=i)
             
             registros.append({
