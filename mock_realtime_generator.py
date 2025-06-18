@@ -58,7 +58,7 @@ class RedisDataGenerator:
 
     def generate_flight_reservation(self) -> Dict[str, Any]:
         """Gera dados de uma reserva de voo"""
-        id_reserva_voo = random.randint(300, 2500)
+        id_reserva_voo = random.randint(300, 2000000)
         id_voo = random.randint(*VOO_ID_RANGE)
         valor = round(random.uniform(300, 2500), 2)
         dias_atras = random.randint(0, 30)
@@ -84,10 +84,7 @@ class RedisDataGenerator:
 
         registros = []
         for i in range(num_dias):
-            uuid_hex = uuid.uuid4().hex
-
-            # Convert the full hexadecimal string to a large integer
-            id_reserva_hotel = random.randint(150, 2000)
+            id_reserva_hotel = random.randint(150, 2000000)
             data_estadia = data_inicial + timedelta(days=i)
 
             registros.append({
@@ -164,8 +161,7 @@ class RedisDataGenerator:
         """Executa o gerador de dados para Redis"""
         print(f" Range Hotéis: {HOTEL_ID_RANGE[0]:,} - {HOTEL_ID_RANGE[1]:,}")
         print(f" Range Voos: {VOO_ID_RANGE[0]:,} - {VOO_ID_RANGE[1]:,}")
-        print(f" Taxa: {FLIGHTS_PER_MINUTE} voos/min, {HOTELS_PER_MINUTE} linhas hotel/min")
-        print(f" Intervalos: {self.flight_interval:.3f}s (voos), {self.hotel_interval:.3f}s (hotéis)")
+        print(f" Taxa: {FLIGHTS_PER_MINUTE} voos/min, {HOTELS_PER_MINUTE*2} linhas hotel/min")
         print("\n Pressione Ctrl+C para parar\n")
 
         try:
