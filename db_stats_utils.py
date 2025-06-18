@@ -53,16 +53,15 @@ def upsert_statistics(conn, table_name, key_columns, value_columns, row):
                     map(sql.Identifier, ["company_id"] + key_columns)
                 ),
                 update_assignments=sql.SQL(", ").join(
-                    sql.Identifier(col)
-                    + sql.SQL(" = EXCLUDED.")
-                    + sql.Identifier(col)
-                    + sql.SQL(" + COALESCE(")
-                    + sql.Identifier(table_name)
-                    + sql.SQL(".")
-                    + sql.Identifier(col)
-                    + sql.SQL(", 0)")
-                    for col in value_columns
-                ),
+                        sql.Identifier(col)
+                        + sql.SQL(" = COALESCE(")
+                        + sql.Identifier(table_name)  # <--- Re-add table_name qualifier here
+                        + sql.SQL(".")
+                        + sql.Identifier(col)
+                        + sql.SQL(", 0) + EXCLUDED.")
+                        + sql.Identifier(col)
+                        for col in value_columns
+                    ),
             )
             cursor.execute(insert_query, all_values)
         except Exception as e:
