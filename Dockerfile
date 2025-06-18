@@ -12,6 +12,7 @@ RUN /opt/bitnami/python/bin/pip install redis faker pyspark psycopg2-binary
 # Copia o script do job Spark
 COPY main.py ./
 COPY pipeline_functions.py ./
+COPY db_stats_utils.py ./
 
 # Copia e torna executável o entrypoint.sh
 # COPY entrypoint.sh ./

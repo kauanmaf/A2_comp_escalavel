@@ -3,11 +3,13 @@ import json
 import random
 import time
 from datetime import datetime
+import uuid
 
 REDIS_HOST = 'localhost'
 REDIS_PORT = 6379
 REDIS_LIST_KEY_FLIGHTS = 'raw_flights'
 REDIS_LIST_KEY_HOTELS = 'raw_hotels'
+REDIS_STATS_REQUEST_CHANNEL = 'stats_request'
 
 SLEEPTIME = 0.5
 
@@ -45,6 +47,18 @@ def add_data_to_list(redis_list, company_id, data_payload):
         "timestamp": datetime.now().isoformat()
     }
     r.rpush(redis_list, json.dumps(message))
+
+def request_statistics(company_id):
+    """
+    Publica uma mensagem no canal de solicitação de estatísticas.
+    """
+    request_message = {
+        "company_id": company_id,
+        "timestamp": datetime.now().isoformat(),
+        "request_id": str(uuid.uuid4()),
+    }
+    r.publish(REDIS_STATS_REQUEST_CHANNEL, json.dumps(request_message))
+    print(f"[{company_id}] - Solicitação de estatísticas enviada para o canal '{REDIS_STATS_REQUEST_CHANNEL}'.")
 
 def generate_flight_reservation_data():
     """
@@ -102,6 +116,7 @@ def generate_hotel_reservation_data():
 if __name__ == "__main__":
     print("Iniciando produtor de eventos de RESERVAS (baseado em dados fixos) para listas Redis...")
     try:
+        counter = 0
         while True:
             # Gera e adiciona um evento de reserva de voo
             add_data_to_list(
@@ -116,6 +131,11 @@ if __name__ == "__main__":
                 random.choice(companies),
                 generate_hotel_reservation_data()
             )
+
+            counter += 1
+            if counter % 50 == 0:
+                request_statistics(random.choice(companies))
+
             time.sleep(SLEEPTIME) # Aumentado o sleep para melhor visualização
 
     except KeyboardInterrupt:

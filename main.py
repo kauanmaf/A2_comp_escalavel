@@ -8,6 +8,17 @@ import json
 import time
 import datetime
 import pipeline_functions as pf
+import threading
+import uuid
+import db_stats_utils
+
+while True:
+    try:
+        db_stats_utils.get_pg_connection()
+        break
+    except:
+        print("Erro de conexão")
+        time.sleep(0.5)
 
 # Definindo os esquemas para os dados aninhados (PAYLOADS DO REDIS)
 # Estes são os schemas para o CONTEÚDO da coluna 'data'
@@ -65,6 +76,47 @@ DADOS_HOTEIS_FIXOS = [
     {"id_hotel": 5, "cidade": "Recife", "estrelas": 3},
 ]
 
+# Canal para ouvir solicitações de estatísticas
+REDIS_CHANNEL_STAT_REQUEST = 'stat_requests'
+
+# Esquema para as mensagens de solicitação de estatísticas
+stat_request_schema = StructType([
+    StructField("company_id", StringType(), True),
+    StructField("request_id", StringType(), True),
+    StructField("timestamp", StringType(), True)
+])
+
+# Variáveis globais para compartilhar o SparkSession e o cliente Redis
+global_spark_session = None
+global_redis_client = None
+
+def listen_for_stat_requests(spark: SparkSession, redis_conn: redis.Redis):
+    """
+    Função que será executada em uma thread separada para escutar solicitações de estatísticas.
+    """
+    pubsub = redis_conn.pubsub()
+    pubsub.subscribe(REDIS_CHANNEL_STAT_REQUEST)
+    print(f"Inscrito no canal Redis '{REDIS_CHANNEL_STAT_REQUEST}' para solicitações de estatísticas.")
+
+    for message in pubsub.listen():
+        if message['type'] == 'message':
+            try:
+                data = json.loads(message['data'])
+                print(f"Mensagem de solicitação de estatísticas recebida: {data}")
+                
+                # Exemplo de como você processaria a solicitação:
+                company_id = data.get('company_id')
+                request_id = data.get('request_id')
+
+                print(f"Processando solicitação de '{company_id}'. Request ID: {request_id}")
+
+                print(f"Lógica para calcular e devolver estatísticas para {company_id} seria executada agora.")
+                
+            except json.JSONDecodeError as e:
+                print(f"Erro ao decodificar mensagem JSON do Redis: {e}")
+            except Exception as e:
+                print(f"Erro inesperado ao processar solicitação de estatísticas: {e}")
+
 THREASHOLD = 100
 
 if __name__ == "__main__":
@@ -93,21 +145,36 @@ if __name__ == "__main__":
     list_thresholds_json = os.getenv('LIST_THRESHOLDS_JSON', '{"raw_hotels": 50, "raw_flights": 50}')
     LIST_THRESHOLDS = json.loads(list_thresholds_json)
 
-    r_client = None
+    global_redis_client = None
+
+    # Inicializa o cliente Redis para o thread principal e para o listener
+    try:
+        global_redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+        global_redis_client.ping()
+        print(f"Conectado ao Redis em {REDIS_HOST}:{REDIS_PORT}.")
+    except redis.exceptions.ConnectionError as e:
+        print(f"Erro inicial de conexão com Redis: {e}. Exiting.")
+        exit(1)
+
+    # Inicia a thread que escuta por solicitações de estatísticas
+    stat_listener_thread = threading.Thread(target=listen_for_stat_requests, args=(global_spark_session, global_redis_client))
+    stat_listener_thread.daemon = True
+    stat_listener_thread.start()
+    print("Thread de escuta de estatísticas iniciada.")
 
     # Loop principal que mantém o Spark job acordado
     while True:
         try:
-            if r_client is None:
-                r_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
-                r_client.ping()
-                print(f"Conectado ao Redis em {REDIS_HOST}:{REDIS_PORT}.")
+            # if global_redis_client is None:
+            #     global_redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+            #     global_redis_client.ping()
+            #     print(f"Conectado ao Redis em {REDIS_HOST}:{REDIS_PORT}.")
 
             total_rows = 0
             
             # Itera sobre cada lista definida e seu threshold
             for list_key, threshold in LIST_THRESHOLDS.items():
-                list_size = r_client.llen(list_key)
+                list_size = global_redis_client.llen(list_key)
                 total_rows += list_size
                 print(f"Verificando lista '{total_rows}': Tamanho atual = {list_size}, Threshold = {THREASHOLD}")
 
@@ -115,8 +182,8 @@ if __name__ == "__main__":
                 print(f"Threshold atingido!")
 
                 # Ler dados do Redis
-                raw_messages_hoteis = r_client.lrange("raw_hotels", 0, list_size - 1)
-                raw_messages_voos = r_client.lrange("raw_flights", 0, list_size - 1)
+                raw_messages_hoteis = global_redis_client.lrange("raw_hotels", 0, list_size - 1)
+                raw_messages_voos = global_redis_client.lrange("raw_flights", 0, list_size - 1)
                 
                 if not raw_messages_hoteis or not raw_messages_voos:
                     print(f"Erro após threshold atingido.")
@@ -231,9 +298,20 @@ if __name__ == "__main__":
                     print(f"Estatísticas de reservas de voos de SP por dia e companhia:")
                     stats_day_sp_voos.show()
 
+
+                    db_stats_utils.save_stats_dataframe(stats_month_hotel, "stats_month_hotel") 
+                    db_stats_utils.save_stats_dataframe(stats_city_hotel, "stats_city_hotel")
+                    db_stats_utils.save_stats_dataframe(stats_month_voos, "stats_month_voos")
+                    db_stats_utils.save_stats_dataframe(stats_city_voos, "stats_city_voos")
+                    db_stats_utils.save_stats_dataframe(stats_faturamentos_totais, "stats_faturamentos_totais")
+                    db_stats_utils.save_stats_dataframe(stats_stars_hotel, "stats_stars_hotel")
+                    db_stats_utils.save_stats_dataframe(stats_estrelas_medias_mes, "stats_estrelas_medias_mes")
+                    db_stats_utils.save_stats_dataframe(stats_month_sp_voos, "stats_month_sp_voos")
+                    db_stats_utils.save_stats_dataframe(stats_day_sp_voos, "stats_day_sp_voos")
+
                     # Remove os dados que acabaram de ser processados da lista Redis
-                    r_client.ltrim("raw_hotels", list_size, -1)
-                    r_client.ltrim("raw_flights", list_size, -1)
+                    global_redis_client.ltrim("raw_hotels", list_size, -1)
+                    global_redis_client.ltrim("raw_flights", list_size, -1)
                     print(f"Limpos {list_size} mensagens da lista Redis '{list_key}'.")
                 else:
                     print(f"Nenhum dado válido para criar DataFrame.")
@@ -242,7 +320,7 @@ if __name__ == "__main__":
 
         except redis.exceptions.ConnectionError as e:
             print(f"Erro de conexão com Redis: {e}. Tentando reconectar no próximo ciclo...")
-            r_client = None
+            global_redis_client = None
         except Exception as e:
             print(f"Ocorreu um erro inesperado no job Spark: {e}")
             import traceback
