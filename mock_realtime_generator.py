@@ -126,8 +126,8 @@ class RedisDataGenerator:
                 time.sleep(1)
 
     def hotel_generator_thread(self):
-        """Thread para gerar dados de reservas de hotéis e adicionar à lista Redis"""
-        print(f"🏨 Thread de hotéis iniciada. Adicionando à lista '{REDIS_CHANNEL_HOTELS}'")
+        """Thread para gerar dados de reservas de hotéis e publicar no Redis"""
+        print(f"🏨 Thread de hotéis iniciada. Publicando em '{REDIS_CHANNEL_HOTELS}'")
         while self.running:
             try:
                 hotel_registros = self.generate_hotel_reservation()
