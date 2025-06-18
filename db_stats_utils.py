@@ -6,11 +6,11 @@ from psycopg2 import sql
 def get_pg_connection():
     """Cria conexão com o PostgreSQL usando variáveis de ambiente"""
     return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "postgres"),
+        host=os.getenv("POSTGRES_HOST", "postgres-stats"),
         port=os.getenv("POSTGRES_PORT", "5432"),
-        dbname=os.getenv("POSTGRES_DB", "postgres"),
-        user=os.getenv("POSTGRES_USER", "postgres"),
-        password=os.getenv("POSTGRES_PASSWORD", "postgres"),
+        dbname=os.getenv("POSTGRES_DB", "dados_stats"),
+        user=os.getenv("POSTGRES_USER", "emap"),
+        password=os.getenv("POSTGRES_PASSWORD", "emap123"),
     )
 
 
@@ -70,7 +70,7 @@ def upsert_statistics(conn, table_name, key_columns, value_columns, row):
 # Mapeamento de tabelas e suas configurações
 TABLE_CONFIG = {
     "stats_month_hotel": {
-        "key_columns": ["cidade", "mes_reserva"],
+        "key_columns": ["mes_reserva"],
         "value_columns": ["sum_valor"],
     },
     "stats_city_hotel": {"key_columns": ["cidade"], "value_columns": ["sum_valor"]},
