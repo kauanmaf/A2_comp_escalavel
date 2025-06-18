@@ -26,9 +26,9 @@ VOO_ID_RANGE = (1, 1340000)  # Range de IDs de voos (aproximadamente 1.34M voos)
 # Configurações Redis
 REDIS_HOST = 'localhost'
 REDIS_PORT = 6379
-REDIS_CHANNEL_FLIGHTS = 'raw_flights' # Agora realmente um canal Pub/Sub
-REDIS_CHANNEL_HOTELS = 'raw_hotels'   # Agora realmente um canal Pub/Sub
-REDIS_STATS_REQUEST_CHANNEL = 'stats_request' # Este já era um canal Pub/Sub
+REDIS_CHANNEL_FLIGHTS = 'raw_flights'
+REDIS_CHANNEL_HOTELS = 'raw_hotels'
+REDIS_STATS_REQUEST_CHANNEL = 'stats_request'
 
 class RedisDataGenerator:
     def __init__(self):
@@ -105,9 +105,9 @@ class RedisDataGenerator:
             
         return registros
 
-    def publish_data_to_redis(self, channel_name: str, data_payload: Dict[str, Any]):
+    def publish_data_to_redis(self, list_key: str, data_payload: Dict[str, Any]):
         """
-        Publica os dados gerados em um canal Redis Pub/Sub.
+        Adiciona os dados gerados a uma lista Redis.
         Adiciona um company_id para simular a origem da reserva.
         """
         company_id = random.choice(["CiaViagemA", "CiaVoosB", "AgenciaTurC"])
@@ -117,8 +117,7 @@ class RedisDataGenerator:
             "data": data_payload,
             "timestamp": datetime.now().isoformat()
         }
-        # AQUI ESTÁ A MUDANÇA PRINCIPAL: Usamos 'publish' para Pub/Sub
-        self.redis_client.publish(channel_name, json.dumps(message)) 
+        self.redis_client.rpush(list_key, json.dumps(message)) 
 
     def flight_generator_thread(self):
         """Thread para gerar dados de reservas de voos e publicar no canal Redis"""
