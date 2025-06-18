@@ -20,12 +20,15 @@ docker-compose up -d
 ### **Para regenerar dados:**
 ```bash
 # Parar tudo
-docker-compose down
+docker-compose down -v
 
 # Remover dados antigos
-sudo rm -rf pgdata_total/*
+sudo rm -rf pgdata_total pgdata_stats
 
-# Subir novamente (dados serão gerados)
+# Subir gearador (dados serão gerados)
+docker-compose build --no-cache data-generator
+
+# Subir tudo
 docker-compose up -d
 ```
 
@@ -76,30 +79,3 @@ ORDER BY mes;
 ### **Persistência:**
 - Os dados ficam salvos em `./pgdata_total/`
 - **Não apague** esta pasta se quiser manter os dados
-
-## Troubleshooting
-
-### **Se der erro na geração:**
-```bash
-# Ver logs detalhados
-docker-compose logs data-generator
-
-# Forçar rebuild do container
-docker-compose build --no-cache data-generator
-docker-compose up -d
-```
-
-### **Se quiser regenerar dados:**
-```bash
-# Parar tudo
-docker-compose down
-
-# Limpar volumes (CUIDADO: apaga todos os dados)
-docker-compose down -v
-
-# Ou apenas limpar a pasta de dados
-sudo rm -rf pgdata_total/*
-
-# Subir novamente
-docker-compose up -d
-```
