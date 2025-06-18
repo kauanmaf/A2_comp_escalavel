@@ -73,33 +73,6 @@ stat_request_schema = StructType([
 global_spark_session = None
 global_redis_client = None
 
-def listen_for_stat_requests(spark: SparkSession, redis_conn: redis.Redis):
-    """
-    Função que será executada em uma thread separada para escutar solicitações de estatísticas.
-    """
-    pubsub = redis_conn.pubsub()
-    pubsub.subscribe(REDIS_CHANNEL_STAT_REQUEST)
-    print(f"Inscrito no canal Redis '{REDIS_CHANNEL_STAT_REQUEST}' para solicitações de estatísticas.")
-
-    for message in pubsub.listen():
-        if message['type'] == 'message':
-            try:
-                data = json.loads(message['data'])
-                print(f"Mensagem de solicitação de estatísticas recebida: {data}")
-                
-                # Exemplo de como você processaria a solicitação:
-                company_id = data.get('company_id')
-                request_id = data.get('request_id')
-
-                print(f"Processando solicitação de '{company_id}'. Request ID: {request_id}")
-
-                print(f"Lógica para calcular e devolver estatísticas para {company_id} seria executada agora.")
-                
-            except json.JSONDecodeError as e:
-                print(f"Erro ao decodificar mensagem JSON do Redis: {e}")
-            except Exception as e:
-                print(f"Erro inesperado ao processar solicitação de estatísticas: {e}")
-
 # Canal para ouvir solicitações de estatísticas
 REDIS_CHANNEL_STAT_REQUEST = 'stat_requests'
 
@@ -133,9 +106,7 @@ def listen_for_stat_requests(spark: SparkSession, redis_conn: redis.Redis):
                 request_id = data.get('request_id')
 
                 print(f"Processando solicitação de '{company_id}'. Request ID: {request_id}")
-
-                print(f"Lógica para calcular e devolver estatísticas para {company_id} seria executada agora.")
-                
+                                
             except json.JSONDecodeError as e:
                 print(f"Erro ao decodificar mensagem JSON do Redis: {e}")
             except Exception as e:
@@ -255,11 +226,6 @@ if __name__ == "__main__":
                     df_raw_redis_message_voos = spark.createDataFrame(parsed_data_voos, schema=raw_redis_message_schema)
                     print(f"DataFrames raw criados")
 
-                    print("df_raw_redis_message_voos")
-                    df_raw_redis_message_voos.show()
-                    print("df_raw_redis_message_hoteis")
-                    df_raw_redis_message_hoteis.show()
-
                     # Parseia o JSON na coluna 'data' usando o schema de payload
                     df_hoteis = df_raw_redis_message_hoteis.withColumn(
                         "parsed_payload", from_json(col("data"), hotel_data_payload_schema)
@@ -283,11 +249,6 @@ if __name__ == "__main__":
                         col("parsed_payload.data_reserva").alias("data_reserva"),
                     )
 
-                    print("Dados de reservas de voos")
-                    df_voos.show()
-                    print("Dados de reservas de hotéis")
-                    df_hoteis.show()
-
                     # Converte a coluna 'data_reservada' para TimestampType
                     df_hoteis = df_hoteis.withColumn(
                         "data_reservada", to_timestamp(col("data_reservada")))
@@ -295,11 +256,7 @@ if __name__ == "__main__":
                         "data_reserva", to_timestamp(col("data_reserva")))     
                     df_voos = df_voos.withColumn(
                         "data_reserva", to_timestamp(col("data_reserva")))
-                    
-                    print("Dados de reservas de voos")
-                    df_voos.show()
-                    print("Dados de reservas de hotéis")
-                    df_hoteis.show()
+        
 
                     set_key_hoteis = pf.create_redis_set(df_hoteis,
                                                         "id_hotel", 
@@ -327,11 +284,6 @@ if __name__ == "__main__":
                     df_voos_master = df_voos_master \
                         .withColumnRenamed("cidade_ida", "cidade_origem") \
                         .withColumnRenamed("cidade_volta", "cidade_destino")
-                    
-                    print("Dataframe master hotéis")
-                    df_hoteis_master.show()
-                    print("Dataframe master voos")
-                    df_voos_master.show()
 
                     joined_hotel = pf.join(df_hoteis_master, df_hoteis, "id_hotel")
                     all_stats_hotel = pf.groupby_city_month_hotels(joined_hotel)
@@ -361,26 +313,26 @@ if __name__ == "__main__":
                     stats_month_sp_voos = pf.groupby_month_sp_flights(filtered_sp_voos)
                     stats_day_sp_voos = pf.groupby_day_sp_flights(filtered_sp_voos)
 
-                    # print(f"Estatísticas de faturamento de hotéis por mês e companhia:")
-                    # stats_month_hotel.show()
-                    # print(f"Estatísticas de faturamento de hotéis por cidade e companhia:")
-                    # stats_city_hotel.show()
-                    # print(f"Estatísticas de faturamento de voos por mês e companhia:")
-                    # stats_month_voos.show()
-                    # print(f"Estatísticas de faturamento de voos por cidade e companhia:")
-                    # stats_city_voos.show()
-                    # print(f"Estatísticas de faturamento total por mês e companhia:")
-                    # stats_faturamentos_totais.show()
-                    # print(f"Estatísticas de faturamento médio por cidade e companhia:")
-                    # stats_ticket_medio.show()
-                    # print(f"Estatísticas de reservas de hotel por estrela e companhia:")
-                    # stats_stars_hotel.show()
-                    # print(f"Estatísticas de estrela média dos hotéis por mês e companhia:")
-                    # stats_estrelas_medias_mes.show()
-                    # print(f"Estatísticas de voos de SP reservados por mês e companhia:")
-                    # stats_month_sp_voos.show()
-                    # print(f"Estatísticas de reservas de voos de SP por dia e companhia:")
-                    # stats_day_sp_voos.show()
+                    print(f"Estatísticas de faturamento de hotéis por mês e companhia:")
+                    stats_month_hotel.show()
+                    print(f"Estatísticas de faturamento de hotéis por cidade e companhia:")
+                    stats_city_hotel.show()
+                    print(f"Estatísticas de faturamento de voos por mês e companhia:")
+                    stats_month_voos.show()
+                    print(f"Estatísticas de faturamento de voos por cidade e companhia:")
+                    stats_city_voos.show()
+                    print(f"Estatísticas de faturamento total por mês e companhia:")
+                    stats_faturamentos_totais.show()
+                    print(f"Estatísticas de faturamento médio por cidade e companhia:")
+                    stats_ticket_medio.show()
+                    print(f"Estatísticas de reservas de hotel por estrela e companhia:")
+                    stats_stars_hotel.show()
+                    print(f"Estatísticas de estrela média dos hotéis por mês e companhia:")
+                    stats_estrelas_medias_mes.show()
+                    print(f"Estatísticas de voos de SP reservados por mês e companhia:")
+                    stats_month_sp_voos.show()
+                    print(f"Estatísticas de reservas de voos de SP por dia e companhia:")
+                    stats_day_sp_voos.show()
 
 
                     db_stats_utils.save_stats_dataframe(stats_month_hotel, "stats_month_hotel") 
