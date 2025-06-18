@@ -6,11 +6,11 @@ from psycopg2 import sql
 def get_pg_connection():
     """Cria conexão com o PostgreSQL usando variáveis de ambiente"""
     return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "postgres-stats"),
-        port=os.getenv("POSTGRES_PORT", "5432"),
-        dbname=os.getenv("POSTGRES_DB", "dados_stats"),
-        user=os.getenv("POSTGRES_USER", "emap"),
-        password=os.getenv("POSTGRES_PASSWORD", "emap123"),
+        host=os.getenv("PG_STATS_HOST", "postgres-stats"),
+        port=os.getenv("PG_STATS_PORT", "5432"),
+        dbname=os.getenv("PG_STATS_DB", "dados_stats"),
+        user=os.getenv("PG_STATS_USER", "emap"),
+        password=os.getenv("PG_STATS_PASSWORD", "emap123"),
     )
 
 
@@ -54,10 +54,13 @@ def upsert_statistics(conn, table_name, key_columns, value_columns, row):
                 ),
                 update_assignments=sql.SQL(", ").join(
                     sql.Identifier(col)
-                    + sql.SQL(" = ")
+                    + sql.SQL(" = EXCLUDED.")
                     + sql.Identifier(col)
-                    + sql.SQL(" + EXCLUDED.")
+                    + sql.SQL(" + COALESCE(")
+                    + sql.Identifier(table_name)
+                    + sql.SQL(".")
                     + sql.Identifier(col)
+                    + sql.SQL(", 0)")
                     for col in value_columns
                 ),
             )
@@ -75,7 +78,7 @@ TABLE_CONFIG = {
     },
     "stats_city_hotel": {"key_columns": ["cidade"], "value_columns": ["sum_valor"]},
     "stats_month_voos": {
-        "key_columns": ["cidade_destino", "mes_reserva"],
+        "key_columns": ["mes_reserva"],
         "value_columns": ["sum_valor"],
     },
     "stats_city_voos": {

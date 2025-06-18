@@ -24,21 +24,21 @@ services:
 
   # PostgreSQL para Dados Totais
   postgres-data:
-    image: postgres:16 # Usando a versão 16, você pode mudar se precisar
+    image: postgres:16
     container_name: postgres-data-db
     restart: always
     environment:
-      POSTGRES_DB: dados_gerais # Nome do banco de dados principal
+      POSTGRES_DB: dados_gerais
       POSTGRES_USER: emap
       POSTGRES_PASSWORD: emap123
     volumes:
-      - ./pgdata_total:/var/lib/postgresql/data # Persiste os dados em um diretório local
-      # Opcional: para inicializar o esquema e dados na primeira inicialização
-      # - ./init_data.sql:/docker-entrypoint-initdb.d/init.sql
+      - pgdata_total:/var/lib/postgresql/data
+      # Se quiser init para este banco:
+      # - ./init_data.sql:/docker-entrypoint-initdb.d/init_data.sql:ro
     ports:
-      - "5432:5432" # Mapeia a porta 5432 do container para a sua máquina
-    healthcheck: # Garante que o DB esteja pronto antes de outros serviços o usarem
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -51,16 +51,16 @@ services:
     container_name: postgres-stats-db
     restart: always
     environment:
-      POSTGRES_DB: dados_stats # Nome do banco de dados de estatísticas
+      POSTGRES_DB: dados_stats
       POSTGRES_USER: emap
       POSTGRES_PASSWORD: emap123
     volumes:
-      - ./pgdata_stats:/var/lib/postgresql/data # Volume dedicado para estatísticas
-      - ./dados_stats_ini.sql:/docker-entrypoint-initdb.d/01-init-stats.sql # Inicializa as tabelas de estatísticas
+      - pgdata_stats:/var/lib/postgresql/data
+      - ./dados_stats_ini.sql:/docker-entrypoint-initdb.d/dados_stats_ini.sql:ro
     ports:
-      - "5433:5432" # Mapeia para a porta 5433 na sua máquina (evita conflito com 5432)
+      - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -83,15 +83,15 @@ services:
       PG_DATA_PASSWORD: emap123
     networks:
       - a2_comp_escalavel_default
-    restart: "no"  # Não reinicia automaticamente após completar
+    restart: "no"
 
   spark-worker:
     image: bitnami/spark:3.5.1
     depends_on:
       - spark-master
       - redis-server
-      - postgres-data # Adicionada dependência
-      - postgres-stats # Adicionada dependência
+      - postgres-data
+      - postgres-stats
     environment:
       - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_WORKER_WEBUI_PORT=8081
@@ -118,23 +118,23 @@ services:
       postgres-stats:
         condition: service_healthy
       data-generator:
-        condition: service_completed_successfully  # Aguarda a geração dos dados fixos
+        condition: service_completed_successfully
     environment:
       SPARK_MASTER_URL: spark://spark-master:7077
       REDIS_HOST: redis-server
       REDIS_PORT: 6379
       MONITOR_INTERVAL_SECONDS: 10
       LIST_THRESHOLDS_JSON: |
-          {"raw_hotels": 50, "raw_flights": 50}
-      # Variáveis de ambiente para o PostgreSQL de Dados Totais
+        {"raw_hotels": 50, "raw_flights": 50}
+      # PostgreSQL Dados Totais
       PG_DATA_HOST: postgres-data
       PG_DATA_PORT: 5432
       PG_DATA_DB: dados_gerais
       PG_DATA_USER: emap
       PG_DATA_PASSWORD: emap123
-      # Variáveis de ambiente para o PostgreSQL de Estatísticas
+      # PostgreSQL Estatísticas
       PG_STATS_HOST: postgres-stats
-      PG_STATS_PORT: 5432 # A porta interna do container é sempre 5432
+      PG_STATS_PORT: 5432
       PG_STATS_DB: dados_stats
       PG_STATS_USER: emap
       PG_STATS_PASSWORD: emap123
@@ -145,7 +145,6 @@ services:
 networks:
   a2_comp_escalavel_default:
 
-# Volumes para persistência dos dados dos bancos de dados
 volumes:
-  pgdata_total: # Volume para dados totais
-  pgdata_stats: # Volume para dados de estatísticas
+  pgdata_total:
+  pgdata_stats:
