@@ -1,11 +1,10 @@
 -- Estatísticas de hotéis por mês e companhia
--- Retorna: company_id, cidade, mes_reserva, sum_valor
+-- Retorna: company_id, mes_reserva, sum_valor
 CREATE TABLE IF NOT EXISTS stats_month_hotel (
     company_id TEXT,
-    cidade TEXT,
     mes_reserva INT,
     sum_valor DOUBLE PRECISION,
-    PRIMARY KEY(company_id, cidade, mes_reserva)
+    PRIMARY KEY(company_id, mes_reserva)
 );
 CREATE INDEX IF NOT EXISTS idx_stats_month_hotel_company ON stats_month_hotel(company_id);
 
@@ -23,10 +22,9 @@ CREATE INDEX IF NOT EXISTS idx_stats_city_hotel_company ON stats_city_hotel(comp
 -- Retorna: company_id, cidade_destino, mes_reserva, sum_valor
 CREATE TABLE IF NOT EXISTS stats_month_voos (
     company_id TEXT,
-    cidade_destino TEXT,
     mes_reserva INT,
     sum_valor DOUBLE PRECISION,
-    PRIMARY KEY(company_id, cidade_destino, mes_reserva)
+    PRIMARY KEY(company_id, mes_reserva)
 );
 CREATE INDEX IF NOT EXISTS idx_stats_month_voos_company ON stats_month_voos(company_id);
 
