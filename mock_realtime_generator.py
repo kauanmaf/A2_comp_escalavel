@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Gerador de dados em tempo real para reservas de voos e hotéis
 Usa threading para gerar dados independentemente em duas threads
@@ -15,8 +14,8 @@ import json
 import redis
 
 # Configuração de quantidade por minuto
-FLIGHTS_PER_MINUTE = 240  # Voos por minuto
-HOTELS_PER_MINUTE = 240    # Hotéis por minuto (na verdade é metade do total de hotéis) =)
+FLIGHTS_PER_MINUTE = 2400  # Voos por minuto
+HOTELS_PER_MINUTE = 2400    # Hotéis por minuto (na verdade é metade do total de hotéis) =)
 
 # Ranges baseados nos dados gerados pelo generate_fixed_database.py
 # Como foram geradas 50 cidades com 50-250 hotéis cada, temos aproximadamente 7000 hotéis
@@ -26,15 +25,15 @@ VOO_ID_RANGE = (1, 1340000)  # Range de IDs de voos (aproximadamente 1.34M voos)
 # Configurações Redis
 REDIS_HOST = 'localhost'
 REDIS_PORT = 6379
-REDIS_CHANNEL_FLIGHTS = 'raw_flights'
-REDIS_CHANNEL_HOTELS = 'raw_hotels'
+REDIS_LIST_KEY_FLIGHTS = 'raw_flights'  # Mesmo nome que test_client_nova.py
+REDIS_LIST_KEY_HOTELS = 'raw_hotels'    # Mesmo nome que test_client_nova.py
 REDIS_STATS_REQUEST_CHANNEL = 'stats_request'
 
 class RedisDataGenerator:
     def __init__(self):
         """Inicializa o gerador de dados para Redis"""
-        print("🚀 === GERADOR DE DADOS PARA REDIS ===")
-        print(f"📡 Publicando em canais Redis: {REDIS_CHANNEL_FLIGHTS}, {REDIS_CHANNEL_HOTELS}")
+        print(" === GERADOR DE DADOS PARA REDIS ===")
+        print(f" Adicionando em listas Redis: {REDIS_LIST_KEY_FLIGHTS}, {REDIS_LIST_KEY_HOTELS}")
 
         self.running = True
         self.stats = {
@@ -47,9 +46,9 @@ class RedisDataGenerator:
         self.redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
         try:
             self.redis_client.ping()
-            print(f"✅ Conectado ao Redis em {REDIS_HOST}:{REDIS_PORT}")
+            print(f" Conectado ao Redis em {REDIS_HOST}:{REDIS_PORT}")
         except redis.exceptions.ConnectionError as e:
-            print(f"❌ Não foi possível conectar ao Redis em {REDIS_HOST}:{REDIS_PORT}. Erro: {e}")
+            print(f" Não foi possível conectar ao Redis em {REDIS_HOST}:{REDIS_PORT}. Erro: {e}")
             print("Certifique-se de que o servidor Redis está em execução.")
             exit(1)
 
@@ -59,8 +58,7 @@ class RedisDataGenerator:
 
     def generate_flight_reservation(self) -> Dict[str, Any]:
         """Gera dados de uma reserva de voo"""
-        # Convert the full hexadecimal string to a large integer
-        id_reserva_voo = random.randint(1, 2_000_000_000)
+        id_reserva_voo = random.randint(300, 2500)
         id_voo = random.randint(*VOO_ID_RANGE)
         valor = round(random.uniform(300, 2500), 2)
         dias_atras = random.randint(0, 30)
@@ -86,9 +84,12 @@ class RedisDataGenerator:
 
         registros = []
         for i in range(num_dias):
-            id_reserva_hotel = random.randint(1, 2_000_000_000)
+            uuid_hex = uuid.uuid4().hex
+
+            # Convert the full hexadecimal string to a large integer
+            id_reserva_hotel = random.randint(150, 2000)
             data_estadia = data_inicial + timedelta(days=i)
-            
+
             registros.append({
                 "id_hotel": id_hotel,
                 "id_reserva_hotel": id_reserva_hotel,
@@ -97,48 +98,49 @@ class RedisDataGenerator:
                 "data_reserva": data_reserva.isoformat()
             })
 
-            
         return registros
 
-    def publish_data_to_redis(self, list_key: str, data_payload: Dict[str, Any]):
+    def add_data_to_list(self, redis_list: str, data_payload: Dict[str, Any]):
         """
-        Adiciona os dados gerados a uma lista Redis.
-        Adiciona um company_id para simular a origem da reserva.
+        Adiciona os dados gerados em uma lista Redis.
+        Usa EXATAMENTE a mesma estrutura do test_client_nova.py para compatibilidade com o Spark.
         """
         company_id = random.choice(["CiaViagemA", "CiaVoosB", "AgenciaTurC"])
-        
+
         message = {
             "company_id": company_id,
             "data": json.dumps(data_payload),
             "timestamp": datetime.now().isoformat()
         }
-        self.redis_client.rpush(list_key, json.dumps(message))
+        # Usa rpush para adicionar à lista (igual ao test_client_nova.py)
+        self.redis_client.rpush(redis_list, json.dumps(message))
+
 
     def flight_generator_thread(self):
-        """Thread para gerar dados de reservas de voos e publicar no canal Redis"""
-        print(f"🛫 Thread de voos iniciada. Publicando no canal '{REDIS_CHANNEL_FLIGHTS}'")
+        """Thread para gerar dados de reservas de voos e adicionar na lista Redis"""
+        print(f" Thread de voos iniciada. Adicionando na lista '{REDIS_LIST_KEY_FLIGHTS}'")
         while self.running:
             try:
                 flight_data = self.generate_flight_reservation()
-                self.publish_data_to_redis(REDIS_CHANNEL_FLIGHTS, flight_data)
+                self.add_data_to_list(REDIS_LIST_KEY_FLIGHTS, flight_data)
                 self.stats['voos_gerados'] += 1
                 time.sleep(self.flight_interval)
             except Exception as e:
-                print(f"❌ Erro na thread de voos: {e}")
+                print(f" Erro na thread de voos: {e}")
                 time.sleep(1)
 
     def hotel_generator_thread(self):
-        """Thread para gerar dados de reservas de hotéis e publicar no canal Redis"""
-        print(f"🏨 Thread de hotéis iniciada. Publicando no canal '{REDIS_CHANNEL_HOTELS}'")
+        """Thread para gerar dados de reservas de hotéis e adicionar na lista Redis"""
+        print(f" Thread de hotéis iniciada. Adicionando na lista '{REDIS_LIST_KEY_HOTELS}'")
         while self.running:
             try:
                 hotel_registros = self.generate_hotel_reservation()
                 for registro in hotel_registros:
-                    self.publish_data_to_redis(REDIS_CHANNEL_HOTELS, registro)
+                    self.add_data_to_list(REDIS_LIST_KEY_HOTELS, registro)
                     self.stats['hoteis_gerados'] += 1
                 time.sleep(self.hotel_interval)
             except Exception as e:
-                print(f"❌ Erro na thread de hotéis: {e}")
+                print(f" Erro na thread de hotéis: {e}")
                 time.sleep(1)
 
     def stats_thread(self):
@@ -152,19 +154,19 @@ class RedisDataGenerator:
             elapsed = datetime.now() - self.stats['start_time']
             elapsed_minutes = elapsed.total_seconds() / 60
 
-            print(f"\n📊 === ESTATÍSTICAS ({elapsed_minutes:.1f} min) ===")
-            print(f"🛫 Reservas de voos publicadas: {self.stats['voos_gerados']}")
-            print(f"🏨 Linhas de hotéis publicadas: {self.stats['hoteis_gerados']}")
-            print(f"📈 Total publicado: {self.stats['voos_gerados'] + self.stats['hoteis_gerados']}")
+            print(f"\n === ESTATÍSTICAS ({elapsed_minutes:.1f} min) ===")
+            print(f" Reservas de voos adicionadas: {self.stats['voos_gerados']}")
+            print(f" Linhas de hotéis adicionadas: {self.stats['hoteis_gerados']}")
+            print(f" Total adicionado: {self.stats['voos_gerados'] + self.stats['hoteis_gerados']}")
             print("=" * 70)
 
     def run(self):
         """Executa o gerador de dados para Redis"""
-        print(f"🏨 Range Hotéis: {HOTEL_ID_RANGE[0]:,} - {HOTEL_ID_RANGE[1]:,}")
-        print(f"🛫 Range Voos: {VOO_ID_RANGE[0]:,} - {VOO_ID_RANGE[1]:,}")
-        print(f"⚡ Taxa: {FLIGHTS_PER_MINUTE} voos/min, {HOTELS_PER_MINUTE} linhas hotel/min")
-        print(f"⏱️ Intervalos: {self.flight_interval:.3f}s (voos), {self.hotel_interval:.3f}s (hotéis)")
-        print("\n💡 Pressione Ctrl+C para parar\n")
+        print(f" Range Hotéis: {HOTEL_ID_RANGE[0]:,} - {HOTEL_ID_RANGE[1]:,}")
+        print(f" Range Voos: {VOO_ID_RANGE[0]:,} - {VOO_ID_RANGE[1]:,}")
+        print(f" Taxa: {FLIGHTS_PER_MINUTE} voos/min, {HOTELS_PER_MINUTE} linhas hotel/min")
+        print(f" Intervalos: {self.flight_interval:.3f}s (voos), {self.hotel_interval:.3f}s (hotéis)")
+        print("\n Pressione Ctrl+C para parar\n")
 
         try:
             flight_thread = threading.Thread(target=self.flight_generator_thread, daemon=True)
@@ -175,13 +177,13 @@ class RedisDataGenerator:
             hotel_thread.start()
             stats_thread.start()
 
-            print("✅ Threads iniciadas. Gerando e publicando dados no Redis...\n")
+            print(" Threads iniciadas. Gerando e adicionando dados nas listas Redis...\n")
 
             while True:
                 time.sleep(1)
 
         except KeyboardInterrupt:
-            print("\n🛑 Parando gerador de dados...")
+            print("\n Parando gerador de dados...")
             self.running = False
 
             flight_thread.join(timeout=2)
@@ -189,12 +191,12 @@ class RedisDataGenerator:
             stats_thread.join(timeout=2)
 
             elapsed = datetime.now() - self.stats['start_time']
-            print(f"\n📊 === ESTATÍSTICAS FINAIS ===")
-            print(f"⏱️ Tempo execução: {elapsed}")
-            print(f"🛫 Reservas de voos publicadas: {self.stats['voos_gerados']}")
-            print(f"🏨 Linhas de hotéis publicadas: {self.stats['hoteis_gerados']}")
-            print(f"📈 Total publicado: {self.stats['voos_gerados'] + self.stats['hoteis_gerados']}")
-            print("\n✅ Gerador encerrado!")
+            print(f"\n === ESTATÍSTICAS FINAIS ===")
+            print(f" Tempo execução: {elapsed}")
+            print(f" Reservas de voos adicionadas: {self.stats['voos_gerados']}")
+            print(f" Linhas de hotéis adicionadas: {self.stats['hoteis_gerados']}")
+            print(f" Total adicionado: {self.stats['voos_gerados'] + self.stats['hoteis_gerados']}")
+            print("\n Gerador encerrado!")
 
 def main():
     """Função principal"""
@@ -202,9 +204,9 @@ def main():
         generator = RedisDataGenerator()
         generator.run()
     except KeyboardInterrupt:
-        print("\n👋 Tchau!")
+        print("Tchau!")
     except Exception as e:
-        print(f"❌ Erro fatal: {e}")
+        print(f" Erro fatal: {e}")
 
 if __name__ == "__main__":
     main()
