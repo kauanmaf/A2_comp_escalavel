@@ -11,7 +11,6 @@ import random
 from datetime import datetime, timedelta
 from typing import Dict, Any
 import uuid
-import os
 import json
 import redis
 
@@ -27,9 +26,9 @@ VOO_ID_RANGE = (1, 1340000)  # Range de IDs de voos (aproximadamente 1.34M voos)
 # Configurações Redis
 REDIS_HOST = 'localhost'
 REDIS_PORT = 6379
-REDIS_CHANNEL_FLIGHTS = 'raw_flights'
-REDIS_CHANNEL_HOTELS = 'raw_hotels'
-REDIS_STATS_REQUEST_CHANNEL = 'stats_request'
+REDIS_CHANNEL_FLIGHTS = 'raw_flights' # Agora realmente um canal Pub/Sub
+REDIS_CHANNEL_HOTELS = 'raw_hotels'   # Agora realmente um canal Pub/Sub
+REDIS_STATS_REQUEST_CHANNEL = 'stats_request' # Este já era um canal Pub/Sub
 
 class RedisDataGenerator:
     def __init__(self):
@@ -60,8 +59,11 @@ class RedisDataGenerator:
 
     def generate_flight_reservation(self) -> Dict[str, Any]:
         """Gera dados de uma reserva de voo"""
+        uuid_hex = uuid.uuid4().hex
+    
+        # Convert the full hexadecimal string to a large integer
+        id_reserva_voo = int(uuid_hex, 16) 
         id_voo = random.randint(*VOO_ID_RANGE)
-        id_reserva_voo = f"RV-{uuid.uuid4().hex[:8].upper()}"
         valor = round(random.uniform(300, 2500), 2)
         dias_atras = random.randint(0, 30)
         data_reserva = datetime.now() - timedelta(days=dias_atras)
@@ -86,9 +88,12 @@ class RedisDataGenerator:
 
         registros = []
         for i in range(num_dias):
-            id_reserva_hotel = f"RH-{uuid.uuid4().hex[:8].upper()}"
+            uuid_hex = uuid.uuid4().hex
+    
+            # Convert the full hexadecimal string to a large integer
+            id_reserva_hotel = int(uuid_hex, 16) 
             data_estadia = data_inicial + timedelta(days=i)
-
+            
             registros.append({
                 "id_hotel": id_hotel,
                 "id_reserva_hotel": id_reserva_hotel,
@@ -96,11 +101,13 @@ class RedisDataGenerator:
                 "data_reservada": data_estadia.strftime('%Y-%m-%d'),
                 "data_reserva": data_reserva.isoformat()
             })
+
+            
         return registros
 
-    def publish_data_to_redis(self, list_key: str, data_payload: Dict[str, Any]):
+    def publish_data_to_redis(self, channel_name: str, data_payload: Dict[str, Any]):
         """
-        Adiciona os dados gerados a uma lista Redis.
+        Publica os dados gerados em um canal Redis Pub/Sub.
         Adiciona um company_id para simular a origem da reserva.
         """
         company_id = random.choice(["CiaViagemA", "CiaVoosB", "AgenciaTurC"])
@@ -110,11 +117,12 @@ class RedisDataGenerator:
             "data": data_payload,
             "timestamp": datetime.now().isoformat()
         }
-        self.redis_client.rpush(list_key, json.dumps(message)) 
+        # AQUI ESTÁ A MUDANÇA PRINCIPAL: Usamos 'publish' para Pub/Sub
+        self.redis_client.publish(channel_name, json.dumps(message)) 
 
     def flight_generator_thread(self):
-        """Thread para gerar dados de reservas de voos e adicionar à lista Redis"""
-        print(f"🛫 Thread de voos iniciada. Adicionando à lista '{REDIS_CHANNEL_FLIGHTS}'")
+        """Thread para gerar dados de reservas de voos e publicar no canal Redis"""
+        print(f"🛫 Thread de voos iniciada. Publicando no canal '{REDIS_CHANNEL_FLIGHTS}'")
         while self.running:
             try:
                 flight_data = self.generate_flight_reservation()
@@ -126,8 +134,8 @@ class RedisDataGenerator:
                 time.sleep(1)
 
     def hotel_generator_thread(self):
-        """Thread para gerar dados de reservas de hotéis e publicar no Redis"""
-        print(f"🏨 Thread de hotéis iniciada. Publicando em '{REDIS_CHANNEL_HOTELS}'")
+        """Thread para gerar dados de reservas de hotéis e publicar no canal Redis"""
+        print(f"🏨 Thread de hotéis iniciada. Publicando no canal '{REDIS_CHANNEL_HOTELS}'")
         while self.running:
             try:
                 hotel_registros = self.generate_hotel_reservation()
