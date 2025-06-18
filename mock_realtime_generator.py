@@ -61,8 +61,7 @@ class RedisDataGenerator:
         id_reserva_voo = random.randint(300, 2000000)
         id_voo = random.randint(*VOO_ID_RANGE)
         valor = round(random.uniform(300, 2500), 2)
-        dias_atras = random.randint(0, 30)
-        data_reserva = datetime.now() - timedelta(days=dias_atras)
+        data_reserva = datetime(2025, random.randint(1, 12), random.randint(1, 28))
 
         return {
             "id_voo": id_voo,
@@ -79,8 +78,8 @@ class RedisDataGenerator:
         data_reserva = datetime.now() - timedelta(days=dias_atras)
 
         num_dias = random.randint(1, 3)
-        dias_futuros = random.randint(0, 90)
-        data_inicial = datetime.now() + timedelta(days=dias_futuros)
+        # Gera uma data aleatória em 2025
+        data_inicial = datetime(2025, random.randint(1, 12), random.randint(1, 28))
 
         registros = []
         for i in range(num_dias):
