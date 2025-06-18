@@ -36,21 +36,69 @@ def get_month_name(month_num):
 # --- Funções de Plotagem Específicas para Cada Tabela ---
 
 def plot_stats_month_hotel(df, config):
-    """Plota os valores de hotéis por mês de reserva."""
+    """Plota os valores de hotéis por mês de reserva como gráfico de linhas."""
     df['mes_reserva'] = pd.to_numeric(df['mes_reserva'], errors='coerce').fillna(0).astype(int)
     full_months_df = pd.DataFrame({'month_num': range(1, 13)})
     df = pd.merge(full_months_df, df, left_on='month_num', right_on='mes_reserva', how='left')
     df['sum_valor'] = df['sum_valor'].fillna(0)
     df['month_name'] = df['month_num'].apply(get_month_name)
     df = df.sort_values(by='month_num')
-    fig = px.bar(df, x='month_name', y='sum_valor', title=config["title"])
-    fig.update_layout(xaxis_title="Mês de Reserva")
+    fig = px.line(df, x='month_name', y='sum_valor', title=config["title"], markers=True)
+    fig.update_layout(xaxis_title="Mês de Reserva", yaxis_title="Valor Total")
     return fig
 
 def plot_stats_city_hotel(df, config):
-    """Plota o top 10 de cidades com maior faturamento em hotéis."""
-    df_sorted = df.sort_values(by='sum_valor', ascending=False).head(config["top_n"])
-    fig = px.bar(df_sorted, x='cidade', y='sum_valor', title=config["title"])
+    """Plota até 10 cidades com maior faturamento em hotéis (barras horizontais, sempre ao menos 4 cidades: SP, RJ, BH, Salvador)."""
+    import pandas as pd
+    import plotly.express as px
+    import unicodedata
+
+    def normalize(s):
+        return unicodedata.normalize('NFKD', s).encode('ASCII', 'ignore').decode('ASCII').lower()
+
+    top_n = min(config.get("top_n", 10), 10)
+    cidades_extras = ["São Paulo", "Rio de Janeiro", "Belo Horizonte", "Salvador"]
+
+    # Normaliza nomes das cidades presentes
+    cidades_presentes_norm = [normalize(c) for c in df['cidade'].unique()]
+
+    # Adiciona cidades extras só se não estiverem presentes (ignorando acento/caixa)
+    cidades_faltando = [c for c in cidades_extras if normalize(c) not in cidades_presentes_norm]
+    df_extra = pd.DataFrame({'cidade': cidades_faltando, 'sum_valor': [0] * len(cidades_faltando)})
+    df = pd.concat([df, df_extra], ignore_index=True)
+
+    # Seleciona até top_n cidades com maior faturamento
+    df_sorted = df.sort_values(by='sum_valor', ascending=True).head(top_n)
+
+    # Garante que as cidades extras estejam presentes no gráfico final
+    for cidade in cidades_extras:
+        if normalize(cidade) not in [normalize(c) for c in df_sorted['cidade']]:
+            df_sorted = pd.concat([df_sorted, pd.DataFrame({'cidade': [cidade], 'sum_valor': [0]})], ignore_index=True)
+
+    # Remove duplicatas mantendo a ordem (considerando normalização)
+    seen = set()
+    rows = []
+    for _, row in df_sorted.iterrows():
+        norm = normalize(row['cidade'])
+        if norm not in seen:
+            seen.add(norm)
+            rows.append(row)
+    df_sorted = pd.DataFrame(rows)
+
+    # Garante que só tenha no máximo top_n cidades
+    df_sorted = df_sorted.head(top_n)
+
+    fig = px.bar(
+        df_sorted,
+        x='sum_valor',
+        y='cidade',
+        orientation='h',
+        title=config["title"]
+    )
+    fig.update_layout(
+        xaxis_title="Faturamento",
+        yaxis_title="Cidade"
+    )
     return fig
 
 def plot_stats_month_voos(df, config):
@@ -61,14 +109,26 @@ def plot_stats_month_voos(df, config):
     df['sum_valor'] = df['sum_valor'].fillna(0)
     df['month_name'] = df['month_num'].apply(get_month_name)
     df = df.sort_values(by='month_num')
-    fig = px.bar(df, x='month_name', y='sum_valor', title=config["title"])
+    fig = px.line(df, x='month_name', y='sum_valor', title=config["title"])
     fig.update_layout(xaxis_title="Mês de Reserva")
     return fig
 
 def plot_stats_city_voos(df, config):
-    """Plota as cidades com maior faturamento em voos."""
-    df_sorted = df.sort_values(by='sum_valor', ascending=False).head(config["top_n"])
-    fig = px.bar(df_sorted, x='cidade_destino', y='sum_valor', title=config["title"])
+    """Plota até 10 cidades com maior faturamento em voos (barras horizontais)."""
+    import plotly.express as px
+
+    df_sorted = df.sort_values(by='sum_valor', ascending=True).head(10)
+    fig = px.bar(
+        df_sorted,
+        x='sum_valor',
+        y='cidade_destino',
+        orientation='h',
+        title=config["title"]
+    )
+    fig.update_layout(
+        xaxis_title="Faturamento",
+        yaxis_title="Cidade de Destino"
+    )
     return fig
 
 def plot_stats_faturamentos_totais(df, config):
@@ -79,7 +139,7 @@ def plot_stats_faturamentos_totais(df, config):
     df['total_valor'] = df['total_valor'].fillna(0)
     df['month_name'] = df['month_num'].apply(get_month_name)
     df = df.sort_values(by='month_num')
-    fig = px.bar(df, x='month_name', y='total_valor', title=config["title"])
+    fig = px.line(df, x='month_name', y='total_valor', title=config["title"])
     fig.update_layout(xaxis_title="Mês de Reserva")
     return fig
 
@@ -96,10 +156,16 @@ def plot_stats_ticket_medio(df, config):
     return fig
 
 def plot_stats_stars_hotel(df, config):
-    """Plota o número de reservas por estrelas de hotel."""
+    """Plota o número de reservas por estrelas de hotel (sempre mostra 1 a 5 no eixo X)."""
     star_order = [1, 2, 3, 4, 5]
+    # Cria DataFrame com todas as estrelas
+    full_stars_df = pd.DataFrame({'estrelas': star_order})
+    # Faz merge para garantir todas as categorias
+    df = pd.merge(full_stars_df, df, on='estrelas', how='left')
+    df['num_reservas'] = df['num_reservas'].fillna(0).astype(int)
     df['estrelas'] = pd.Categorical(df['estrelas'], categories=star_order, ordered=True)
     fig = px.bar(df, x='estrelas', y='num_reservas', title=config["title"])
+    fig.update_xaxes(type='category', categoryorder='array', categoryarray=star_order)
     return fig
 
 def plot_stats_estrelas_medias_mes(df, config):
@@ -115,7 +181,7 @@ def plot_stats_estrelas_medias_mes(df, config):
     )
     df['month_name'] = df['month_num'].apply(get_month_name)
     df = df.sort_values(by='month_num')
-    fig = px.bar(df, x='month_name', y='media_estrelas', title=config["title"])
+    fig = px.line(df, x='month_name', y='media_estrelas', title=config["title"])
     fig.update_layout(xaxis_title="Mês de Reserva")
     return fig
 
@@ -127,14 +193,34 @@ def plot_stats_month_sp_voos(df, config):
     df['num_voos_reservados'] = df['num_voos_reservados'].fillna(0)
     df['month_name'] = df['month_num'].apply(get_month_name)
     df = df.sort_values(by='month_num')
-    fig = px.bar(df, x='month_name', y='num_voos_reservados', title=config["title"])
+    fig = px.line(df, x='month_name', y='num_voos_reservados', title=config["title"])
     fig.update_layout(xaxis_title="Mês de Reserva")
     return fig
 
 def plot_stats_day_sp_voos(df, config):
-    """Plota os top 10 dias com mais reservas de voos em SP."""
-    df_sorted = df.sort_values(by='num_reservas', ascending=False).head(config["top_n"])
-    fig = px.bar(df_sorted, x='data_reserva', y='num_reservas', title=config["title"])
+    """Plota uma barra para cada dia, destacando os top 10 dias com mais reservas de voos em SP."""
+    import plotly.express as px
+
+    # Ordena por número de reservas e pega os top N dias
+    top_n = config.get("top_n", 10)
+    df = df.copy()
+    top_days = df.nlargest(top_n, 'num_reservas')['data_reserva']
+    df['categoria'] = df['data_reserva'].apply(lambda x: "Top 10" if x in top_days.values else "Outros")
+
+    # Plota todas as barras, colorindo os top 10 de azul escuro e os outros de azul padrão
+    fig = px.bar(
+        df.sort_values('data_reserva'),
+        x='data_reserva',
+        y='num_reservas',
+        color='categoria',
+        color_discrete_map={"Outros": "#1f77b4", "Top 10": "#660000"},
+        title=config["title"]
+    )
+    fig.update_layout(
+        xaxis_title="Data da Reserva",
+        yaxis_title="Número de Reservas",
+        legend_title="Categoria"
+    )
     return fig
 
 

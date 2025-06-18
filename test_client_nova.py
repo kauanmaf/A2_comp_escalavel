@@ -11,7 +11,7 @@ REDIS_LIST_KEY_FLIGHTS = 'raw_flights'
 REDIS_LIST_KEY_HOTELS = 'raw_hotels'
 REDIS_STATS_REQUEST_CHANNEL = 'stats_request'
 
-SLEEPTIME = 0.5
+SLEEPTIME = 0
 
 r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 random.seed(42)
