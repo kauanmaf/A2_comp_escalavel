@@ -261,10 +261,6 @@ TABLE_CONFIG = {
         "title": "Faturamentos Totais (Voos e Hotéis) por Mês de Reserva", "section": "Faturamento Total",
         "plot_func": plot_stats_faturamentos_totais
     },
-    "stats_ticket_medio": {
-        "title": "Ticket Médio por Cidade de Destino", "section": "Faturamento Total",
-        "value_columns": ["sum_valor", "num_transacoes"], "plot_func": plot_stats_ticket_medio
-    },
     "stats_stars_hotel": {
         "title": "Número de Reservas por Estrelas de Hotel", "section": "Hoteis",
         "plot_func": plot_stats_stars_hotel
