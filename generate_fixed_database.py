@@ -157,9 +157,9 @@ class DatabaseGenerator:
         current_date = start_date
         while current_date <= end_date:
             # Para cada par de cidades
-            for cidade_ida in CIDADES_BRASILEIRAS:
-                for cidade_volta in CIDADES_BRASILEIRAS:
-                    if cidade_ida != cidade_volta:  # Não criar voos para a mesma cidade
+            for cidade_origem in CIDADES_BRASILEIRAS:
+                for cidade_destino in CIDADES_BRASILEIRAS:
+                    if cidade_origem != cidade_destino:  # Não criar voos para a mesma cidade
 
                         # Número de voos por rota
                         num_voos = random.randint(1, 2)
@@ -168,8 +168,8 @@ class DatabaseGenerator:
                         for _ in range(num_voos):
                             voo = {
                                 'id_voo': id_voo,
-                                'cidade_ida': cidade_ida,
-                                'cidade_volta': cidade_volta,
+                                'cidade_origem': cidade_origem,
+                                'cidade_destino': cidade_destino,
                                 'dia': current_date.day,
                                 'mes': current_date.month,
                                 'ano': current_date.year
@@ -205,18 +205,18 @@ class DatabaseGenerator:
         DROP TABLE IF EXISTS voos CASCADE;
         CREATE TABLE voos (
             id_voo INTEGER PRIMARY KEY,
-            cidade_ida VARCHAR(100) NOT NULL,
-            cidade_volta VARCHAR(100) NOT NULL,
+            cidade_origem VARCHAR(100) NOT NULL,
+            cidade_destino VARCHAR(100) NOT NULL,
             dia INTEGER CHECK (dia >= 1 AND dia <= 31),
             mes INTEGER CHECK (mes >= 1 AND mes <= 12),
             ano INTEGER CHECK (ano > 0)
         );
 
         -- Criar índices para otimizar consultas na tabela voos
-        CREATE INDEX idx_voos_cidade_ida ON voos(cidade_ida);
-        CREATE INDEX idx_voos_cidade_volta ON voos(cidade_volta);
+        CREATE INDEX idx_voos_cidade_origem ON voos(cidade_origem);
+        CREATE INDEX idx_voos_cidade_destino ON voos(cidade_destino);
         CREATE INDEX idx_voos_data ON voos(ano, mes, dia);
-        CREATE INDEX idx_voos_rota ON voos(cidade_ida, cidade_volta);
+        CREATE INDEX idx_voos_rota ON voos(cidade_origem, cidade_destino);
         """
         return sql
 
@@ -253,7 +253,7 @@ class DatabaseGenerator:
                 for i in range(0, len(voos_tuples), batch_size):
                     batch = voos_tuples[i:i + batch_size]
                     cursor.executemany(
-                        "INSERT INTO voos (id_voo, cidade_ida, cidade_volta, dia, mes, ano) VALUES (%s, %s, %s, %s, %s, %s)",
+                        "INSERT INTO voos (id_voo, cidade_origem, cidade_destino, dia, mes, ano) VALUES (%s, %s, %s, %s, %s, %s)",
                         batch
                     )
                     conn.commit()
@@ -287,7 +287,7 @@ class DatabaseGenerator:
         if self.voos_df is not None:
             print("\n=== ESTATÍSTICAS DOS VOOS ===")
             print(f"Total de voos: {len(self.voos_df):,}")
-            print(f"Rotas únicas: {len(self.voos_df[['cidade_ida', 'cidade_volta']].drop_duplicates()):,}")
+            print(f"Rotas únicas: {len(self.voos_df[['cidade_origem', 'cidade_destino']].drop_duplicates()):,}")
             print(f"Voos por dia (média): {len(self.voos_df) / 362:.1f}")  # 362 dias
 
 def main():
