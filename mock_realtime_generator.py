@@ -114,10 +114,10 @@ class RedisDataGenerator:
         
         message = {
             "company_id": company_id,
-            "data": data_payload,
+            "data": json.dumps(data_payload),
             "timestamp": datetime.now().isoformat()
         }
-        self.redis_client.rpush(list_key, json.dumps(message)) 
+        self.redis_client.rpush(list_key, json.dumps(message))
 
     def flight_generator_thread(self):
         """Thread para gerar dados de reservas de voos e publicar no canal Redis"""
