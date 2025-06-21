@@ -22,65 +22,19 @@ services:
     networks:
       - a2_comp_escalavel_default
 
-  # PostgreSQL para Dados Totais
-  postgres-data:
-    image: postgres:16
-    container_name: postgres-data-db
-    restart: always
-    environment:
-      POSTGRES_DB: dados_gerais
-      POSTGRES_USER: emap
-      POSTGRES_PASSWORD: emap123
-    volumes:
-      - pgdata_total:/var/lib/postgresql/data
-      # Se quiser init para este banco:
-      # - ./init_data.sql:/docker-entrypoint-initdb.d/init_data.sql:ro
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - a2_comp_escalavel_default
-
-  # PostgreSQL para Estatísticas
-  postgres-stats:
-    image: postgres:16
-    container_name: postgres-stats-db
-    restart: always
-    environment:
-      POSTGRES_DB: dados_stats
-      POSTGRES_USER: emap
-      POSTGRES_PASSWORD: emap123
-    volumes:
-      - pgdata_stats:/var/lib/postgresql/data
-      - ./dados_stats_ini.sql:/docker-entrypoint-initdb.d/dados_stats_ini.sql:ro
-    ports:
-      - "5433:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - a2_comp_escalavel_default
-
   # Serviço para gerar dados fixos (executa uma vez e para)
   data-generator:
     build:
       context: .
       dockerfile: Dockerfile.generator
-    depends_on:
-      postgres-data:
-        condition: service_healthy
     environment:
-      PG_DATA_HOST: postgres-data
-      PG_DATA_PORT: 5432
-      PG_DATA_DB: dados_gerais
-      PG_DATA_USER: emap
-      PG_DATA_PASSWORD: emap123
+      S3_MASTER_DATA_BUCKET: a2-comp-escalavel-dados-brutos
+      S3_PREFIX_HOTEIS: master_data/hoteis/
+      S3_PREFIX_VOOS: master_data/voos/
+      AWS_ACCESS_KEY_ID: <AWS_ACCESS_KEY_ID>
+      AWS_SECRET_ACCESS_KEY: <AWS_SECRET_ACCESS_KEY>
+      AWS_SESSION_TOKEN: <AWS_SESSION_TOKEN>
+      AWS_DEFAULT_REGION: us-east-1
     networks:
       - a2_comp_escalavel_default
     restart: "no"
@@ -90,8 +44,6 @@ services:
     depends_on:
       - spark-master
       - redis-server
-      - postgres-data
-      - postgres-stats
     environment:
       - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_WORKER_WEBUI_PORT=8081
@@ -113,10 +65,6 @@ services:
         condition: service_started
       redis-server:
         condition: service_started
-      postgres-data:
-        condition: service_healthy
-      postgres-stats:
-        condition: service_healthy
       data-generator:
         condition: service_completed_successfully
     environment:
@@ -126,8 +74,7 @@ services:
       MONITOR_INTERVAL_SECONDS: 10
       LIST_THRESHOLDS_JSON: |
         {"raw_hotels": 50, "raw_flights": 50}
-      # PostgreSQL Dados Totais
-      PG_DATA_HOST: postgres-data
+      PG_DATA_HOST: a2-comp-escalavel-dados-gerais.col2wfyf2csx.us-east-1.rds.amazonaws.com
       PG_DATA_PORT: 5432
       PG_DATA_DB: dados_gerais
       PG_DATA_USER: emap
@@ -138,13 +85,16 @@ services:
       PG_STATS_DB: dados_stats
       PG_STATS_USER: emap
       PG_STATS_PASSWORD: emap123
+      S3_MASTER_DATA_BUCKET: a2-comp-escalavel-dados-brutos
+      S3_PREFIX_HOTEIS: master_data/hoteis/
+      S3_PREFIX_VOOS: master_data/voos/
+      AWS_ACCESS_KEY_ID: <AWS_ACCESS_KEY_ID>
+      AWS_SECRET_ACCESS_KEY: <AWS_SECRET_ACCESS_KEY>
+      AWS_SESSION_TOKEN: <AWS_SESSION_TOKEN>
+      AWS_DEFAULT_REGION: us-east-1
     entrypoint: ["/opt/bitnami/python/bin/python", "main.py"]
     networks:
       - a2_comp_escalavel_default
 
 networks:
   a2_comp_escalavel_default:
-
-volumes:
-  pgdata_total:
-  pgdata_stats:

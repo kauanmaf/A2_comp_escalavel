@@ -14,7 +14,10 @@ RUN apt-get update && apt-get install -y \
 RUN pip install --no-cache-dir \
     pandas>=2.0.0 \
     psycopg2-binary>=2.9.0 \
-    faker>=19.0.0
+    faker>=19.0.0 \
+    boto3 \
+    pyarrow \
+    s3fs
 
 # Copia o script do gerador
 COPY generate_fixed_database.py ./
