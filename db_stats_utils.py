@@ -14,48 +14,6 @@ def get_pg_connection():
     )
 
 
-def insert_to_staging(conn, staging_table_name, key_columns, value_columns, row):
-    """
-    Insere dados na tabela de staging correspondente.
-    
-    Args:
-        conn: Conexão PostgreSQL
-        staging_table_name: Nome da tabela de staging (com prefixo 'staging_')
-        key_columns: Lista de colunas chave (além de company_id)
-        value_columns: Lista de colunas de valores
-        row: Dicionário com dados da linha
-    """
-    company_id = row["company_id"]
-    key_values = [row[col] for col in key_columns]
-    value_values = [row[col] for col in value_columns]
-
-    with conn.cursor() as cursor:
-        try:
-            # Preparar todas as colunas e valores para inserção
-            all_columns = ["company_id"] + key_columns + value_columns
-            all_values = [company_id] + key_values + value_values
-
-            # Inserção simples na tabela de staging
-            # A coluna 'processed' será FALSE por padrão
-            # A coluna 'inserido_em' será preenchida automaticamente com now()
-            insert_query = sql.SQL(
-                """
-                INSERT INTO {staging_table} ({fields})
-                VALUES ({placeholders})
-                """
-            ).format(
-                staging_table=sql.Identifier(staging_table_name),
-                fields=sql.SQL(", ").join(map(sql.Identifier, all_columns)),
-                placeholders=sql.SQL(", ").join([sql.Placeholder()] * len(all_columns))
-            )
-            
-            cursor.execute(insert_query, all_values)
-            
-        except Exception as e:
-            conn.rollback()
-            raise e
-
-
 # Mapeamento de tabelas e suas configurações (agora mapeando para staging)
 STAGING_TABLE_CONFIG = {
     "staging_stats_month_hotel": {
@@ -118,8 +76,7 @@ TABLE_TO_STAGING = {
 def save_stats_dataframe(df, table_name):
     """
     Recebe um DataFrame do Spark contendo estatísticas processadas e insere os dados
-    na tabela de staging correspondente. Os dados serão processados posteriormente
-    pela função processar_todas_estatisticas() agendada via pg_cron.
+    na tabela de staging correspondente de forma otimizada usando inserção em lote.
     
     Args:
         df: DataFrame do Spark com os dados processados
@@ -136,41 +93,53 @@ def save_stats_dataframe(df, table_name):
     if not config:
         raise ValueError(f"Configuração não encontrada para tabela de staging: {staging_table_name}")
 
-    def _insert_partition(rows):
-        """
-        Função para inserir uma partição de dados na tabela de staging.
-        Executa dentro de uma transação para garantir consistência.
-        """
-        conn = get_pg_connection()
-        try:
-            conn.autocommit = False  # Garantir que estamos em modo transacional
-            
-            for row in rows:
-                data = row.asDict()
-                insert_to_staging(
-                    conn=conn,
-                    staging_table_name=staging_table_name,
-                    key_columns=config["key_columns"],
-                    value_columns=config["value_columns"],
-                    row=data,
-                )
-
-            conn.commit()
-            
-        except Exception as e:
-            conn.rollback()
-            # Log do erro para debugging
-            print(f"Erro ao inserir dados na staging {staging_table_name}: {str(e)}")
-            raise e
-        finally:
-            conn.close()
-
-    # Reparticiona o DataFrame por company_id para otimizar inserções
-    # Isso garante que dados de uma mesma empresa fiquem na mesma partição
-    repart_df = df.repartition("company_id")
+    # Coleta todos os dados do DataFrame para Python
+    rows_data = df.collect()
     
-    # Executa inserção em cada partição de forma paralela pelo Spark
-    repart_df.foreachPartition(_insert_partition)
+    if not rows_data:
+        # print(f"Nenhum dado para inserir na tabela {staging_table_name}", flush=True)
+        return
+    
+    # Prepara os dados para inserção em lote
+    all_columns = ["company_id"] + config["key_columns"] + config["value_columns"]
+    batch_data = []
+    
+    for row in rows_data:
+        data = row.asDict()
+        company_id = data["company_id"]
+        key_values = [data[col] for col in config["key_columns"]]
+        value_values = [data[col] for col in config["value_columns"]]
+        batch_data.append([company_id] + key_values + value_values)
+    
+    # Insere todos os dados em uma única transação
+    conn = get_pg_connection()
+    try:
+        conn.autocommit = False
+        
+        with conn.cursor() as cursor:
+            # Inserção em lote usando executemany para máxima performance
+            insert_query = sql.SQL(
+                """
+                INSERT INTO {staging_table} ({fields})
+                VALUES ({placeholders})
+                """
+            ).format(
+                staging_table=sql.Identifier(staging_table_name),
+                fields=sql.SQL(", ").join(map(sql.Identifier, all_columns)),
+                placeholders=sql.SQL(", ").join([sql.Placeholder()] * len(all_columns))
+            )
+            
+            cursor.executemany(insert_query, batch_data)
+            
+        conn.commit()
+        # print(f"Inseridos {len(batch_data)} registros na tabela {staging_table_name}", flush=True)
+        
+    except Exception as e:
+        conn.rollback()
+        # print(f"Erro ao inserir dados na staging {staging_table_name}: {str(e)}", flush=True)
+        raise e
+    finally:
+        conn.close()
 
 
 def get_staging_status():
@@ -196,7 +165,7 @@ def get_staging_status():
                 status[staging_table] = count
                 
     except Exception as e:
-        print(f"Erro ao verificar status das tabelas de staging: {str(e)}")
+        print(f"Erro ao verificar status das tabelas de staging: {str(e)}", flush=True)
         raise e
     finally:
         conn.close()
@@ -220,12 +189,12 @@ def force_process_staging():
         with conn.cursor() as cursor:
             cursor.execute("SELECT processar_todas_estatisticas()")
             conn.commit()
-            print("Processamento manual das estatísticas executado com sucesso")
+            # print("Processamento manual das estatísticas executado com sucesso", flush=True)
             return True
             
     except Exception as e:
         conn.rollback()
-        print(f"Erro ao executar processamento manual: {str(e)}")
+        print(f"Erro ao executar processamento manual: {str(e)}", flush=True)
         raise e
     finally:
         conn.close()

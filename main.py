@@ -184,17 +184,19 @@ if __name__ == "__main__":
             for list_key, threshold in LIST_THRESHOLDS.items():
                 list_size = global_redis_client.llen(list_key)
                 list_sizes[list_key] = list_size
-                print(f"Verificando lista '{list_key}': Tamanho atual = {list_size}, Threshold = {threshold}")
+                # Removido log detalhado de verificação de lista
 
-            # Só processa se TODAS as listas atingirem seus thresholds
-            if all(list_sizes[key] >= LIST_THRESHOLDS[key] for key in LIST_THRESHOLDS):
-                print(f"Threshold atingido para todas as listas!")
+            # Só processa se TODAS as listas existem E atingirem seus thresholds
+            if all(list_key in list_sizes and list_sizes[list_key] >= LIST_THRESHOLDS[list_key] for list_key in LIST_THRESHOLDS):
+                # print(f"Threshold atingido para todas as listas!")  # Removido log
 
                 raw_messages_hoteis = global_redis_client.lrange("raw_hotels", 0, list_sizes["raw_hotels"] - 1)
                 raw_messages_voos = global_redis_client.lrange("raw_flights", 0, list_sizes["raw_flights"] - 1)
 
-                if not raw_messages_hoteis and not raw_messages_voos:
-                    print(f"Erro após threshold atingido.")
+                # Se qualquer uma das listas estiver vazia, não processa e aguarda o próximo ciclo
+                if len(raw_messages_hoteis) == 0 or len(raw_messages_voos) == 0:
+                    # print(f"Uma ou mais listas estão vazias após atingir o threshold. Aguardando próximo ciclo...")
+                    time.sleep(MONITOR_INTERVAL)
                     continue
 
                 # Converte as strings JSON em dicionários Python
@@ -202,29 +204,24 @@ if __name__ == "__main__":
                 for msg in raw_messages_hoteis:
                     try:
                         item = json.loads(msg)
-                        # Converte a string de timestamp para objeto datetime
                         item['timestamp'] = datetime.datetime.fromisoformat(item['timestamp'])
                         parsed_data_hoteis.append(item)
-                    except (json.JSONDecodeError, ValueError) as e:
-                        print(f"Erro ao parsear ou converter mensagem JSON/timestamp de hotéis")
+                    except (json.JSONDecodeError, ValueError):
                         continue 
                 parsed_data_voos = []
                 for msg in raw_messages_voos:
                     try:
                         item = json.loads(msg)
-                        # Converte a string de timestamp para objeto datetime
                         item['timestamp'] = datetime.datetime.fromisoformat(item['timestamp'])
                         parsed_data_voos.append(item)
-                    except (json.JSONDecodeError, ValueError) as e:
-                        print(f"Erro ao parsear ou converter mensagem JSON/timestamp de voos")
+                    except (json.JSONDecodeError, ValueError):
                         continue 
 
                 # Cria um DataFrame a partir dos dados lidos
                 if parsed_data_hoteis and parsed_data_voos:
-
                     df_raw_redis_message_hoteis = spark.createDataFrame(parsed_data_hoteis, schema=raw_redis_message_schema)
                     df_raw_redis_message_voos = spark.createDataFrame(parsed_data_voos, schema=raw_redis_message_schema)
-                    print(f"DataFrames raw criados")
+                    # print(f"DataFrames raw criados")  # Removido log
 
                     # Parseia o JSON na coluna 'data' usando o schema de payload
                     df_hoteis = df_raw_redis_message_hoteis.withColumn(
@@ -313,26 +310,26 @@ if __name__ == "__main__":
                     stats_month_sp_voos = pf.groupby_month_sp_flights(filtered_sp_voos)
                     stats_day_sp_voos = pf.groupby_day_sp_flights(filtered_sp_voos)
 
-                    print(f"Estatísticas de faturamento de hotéis por mês e companhia:")
-                    stats_month_hotel.show()
-                    print(f"Estatísticas de faturamento de hotéis por cidade e companhia:")
-                    stats_city_hotel.show()
-                    print(f"Estatísticas de faturamento de voos por mês e companhia:")
-                    stats_month_voos.show()
-                    print(f"Estatísticas de faturamento de voos por cidade e companhia:")
-                    stats_city_voos.show()
-                    print(f"Estatísticas de faturamento total por mês e companhia:")
-                    stats_faturamentos_totais.show()
-                    print(f"Estatísticas de faturamento médio por cidade e companhia:")
-                    stats_ticket_medio.show()
-                    print(f"Estatísticas de reservas de hotel por estrela e companhia:")
-                    stats_stars_hotel.show()
-                    print(f"Estatísticas de estrela média dos hotéis por mês e companhia:")
-                    stats_estrelas_medias_mes.show()
-                    print(f"Estatísticas de voos de SP reservados por mês e companhia:")
-                    stats_month_sp_voos.show()
-                    print(f"Estatísticas de reservas de voos de SP por dia e companhia:")
-                    stats_day_sp_voos.show()
+                    # print(f"Estatísticas de faturamento de hotéis por mês e companhia:")
+                    # stats_month_hotel.show()
+                    # print(f"Estatísticas de faturamento de hotéis por cidade e companhia:")
+                    # stats_city_hotel.show()
+                    # print(f"Estatísticas de faturamento de voos por mês e companhia:")
+                    # stats_month_voos.show()
+                    # print(f"Estatísticas de faturamento de voos por cidade e companhia:")
+                    # stats_city_voos.show()
+                    # print(f"Estatísticas de faturamento total por mês e companhia:")
+                    # stats_faturamentos_totais.show()
+                    # print(f"Estatísticas de faturamento médio por cidade e companhia:")
+                    # stats_ticket_medio.show()
+                    # print(f"Estatísticas de reservas de hotel por estrela e companhia:")
+                    # stats_stars_hotel.show()
+                    # print(f"Estatísticas de estrela média dos hotéis por mês e companhia:")
+                    # stats_estrelas_medias_mes.show()
+                    # print(f"Estatísticas de voos de SP reservados por mês e companhia:")
+                    # stats_month_sp_voos.show()
+                    # print(f"Estatísticas de reservas de voos de SP por dia e companhia:")
+                    # stats_day_sp_voos.show()
 
 
                     db_stats_utils.save_stats_dataframe(stats_month_hotel, "stats_month_hotel") 
@@ -349,12 +346,13 @@ if __name__ == "__main__":
                     # Limpa apenas os dados processados de cada lista
                     global_redis_client.ltrim("raw_hotels", list_sizes["raw_hotels"], -1)
                     global_redis_client.ltrim("raw_flights", list_sizes["raw_flights"], -1)
-                    print(f"Limpos {list_sizes['raw_hotels']} mensagens da lista Redis 'raw_hotels'.")
-                    print(f"Limpos {list_sizes['raw_flights']} mensagens da lista Redis 'raw_flights'.")
-                else:
-                    print(f"Nenhum dado válido para criar DataFrame.")
+                    # print(f"Limpos {list_sizes['raw_hotels']} mensagens da lista Redis 'raw_hotels'.")
+                    # print(f"Limpos {list_sizes['raw_flights']} mensagens da lista Redis 'raw_flights'.")
+                # else:
+                    # print(f"Nenhum dado válido para criar DataFrame.")
             else:
-                print(f"Não há dados suficientes para atingir o threshold em todas as listas.")
+                # print(f"Não há dados suficientes para atingir o threshold em todas as listas.")
+                time.sleep(MONITOR_INTERVAL)
 
         except redis.exceptions.ConnectionError as e:
             print(f"Erro de conexão com Redis: {e}. Tentando reconectar no próximo ciclo...")
@@ -364,5 +362,5 @@ if __name__ == "__main__":
             import traceback
             traceback.print_exc()
             
-        print(f"Aguardando {MONITOR_INTERVAL} segundos para a próxima verificação...")
+        # print(f"Aguardando {MONITOR_INTERVAL} segundos para a próxima verificação...")
         time.sleep(MONITOR_INTERVAL)
