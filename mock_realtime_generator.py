@@ -12,6 +12,7 @@ from typing import Dict, Any
 import uuid
 import json
 import redis
+import os
 
 # Configuração de quantidade por minuto
 FLIGHTS_PER_MINUTE = 2400  # Voos por minuto
@@ -23,8 +24,8 @@ HOTEL_ID_RANGE = (1, 7000)  # Range de IDs de hotéis
 VOO_ID_RANGE = (1, 1340000)  # Range de IDs de voos (aproximadamente 1.34M voos)
 
 # Configurações Redis
-REDIS_HOST = 'localhost'
-REDIS_PORT = 6379
+REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
+REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
 REDIS_LIST_KEY_FLIGHTS = 'raw_flights'  # Mesmo nome que test_client_nova.py
 REDIS_LIST_KEY_HOTELS = 'raw_hotels'    # Mesmo nome que test_client_nova.py
 REDIS_STATS_REQUEST_CHANNEL = 'stats_request'

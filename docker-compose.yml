@@ -142,6 +142,21 @@ services:
     networks:
       - a2_comp_escalavel_default
 
+  # Serviço para o gerador de dados em tempo real
+  realtime-data-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile.generator-client
+    depends_on:
+      redis-server:
+        condition: service_started
+    environment:
+      REDIS_HOST: redis-server
+      REDIS_PORT: 6379
+    networks:
+      - a2_comp_escalavel_default
+    restart: "on-failure"
+
 networks:
   a2_comp_escalavel_default:
 
