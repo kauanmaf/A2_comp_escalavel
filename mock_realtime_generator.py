@@ -8,19 +8,24 @@ import threading
 import time
 import random
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 import uuid
 import json
 import redis
+import psycopg2
 
 # Configuração de quantidade por minuto
 FLIGHTS_PER_MINUTE = 2400  # Voos por minuto
 HOTELS_PER_MINUTE = 2400    # Hotéis por minuto (na verdade é metade do total de hotéis) =)
 
-# Ranges baseados nos dados gerados pelo generate_fixed_database.py
-# Como foram geradas 50 cidades com 50-250 hotéis cada, temos aproximadamente 7000 hotéis
-HOTEL_ID_RANGE = (1, 7000)  # Range de IDs de hotéis
-VOO_ID_RANGE = (1, 1340000)  # Range de IDs de voos (aproximadamente 1.34M voos)
+# Configurações PostgreSQL
+DB_CONFIG = {
+    'host': 'localhost',
+    'port': 5432,
+    'database': 'dados_gerais',
+    'user': 'emap',
+    'password': 'emap123'
+}
 
 # Configurações Redis
 REDIS_HOST = 'localhost'
@@ -29,11 +34,47 @@ REDIS_LIST_KEY_FLIGHTS = 'raw_flights'  # Mesmo nome que test_client_nova.py
 REDIS_LIST_KEY_HOTELS = 'raw_hotels'    # Mesmo nome que test_client_nova.py
 REDIS_STATS_REQUEST_CHANNEL = 'stats_request'
 
+def get_real_ranges_from_db() -> Tuple[Tuple[int, int], Tuple[int, int]]:
+    """
+    Busca os ranges reais de IDs de hotéis e voos da base de dados PostgreSQL
+    Retorna: ((min_hotel_id, max_hotel_id), (min_voo_id, max_voo_id))
+    """
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cursor = conn.cursor()
+
+        # Buscar range de hotéis
+        cursor.execute("SELECT MIN(id_hotel), MAX(id_hotel) FROM hoteis")
+        hotel_range = cursor.fetchone()
+
+        # Buscar range de voos
+        cursor.execute("SELECT MIN(id_voo), MAX(id_voo) FROM voos")
+        voo_range = cursor.fetchone()
+
+        cursor.close()
+        conn.close()
+
+        print(f" Range real de hotéis: {hotel_range[0]} - {hotel_range[1]}")
+        print(f" Range real de voos: {voo_range[0]} - {voo_range[1]}")
+
+        return (hotel_range, voo_range)
+
+    except Exception as e:
+        print(f" Erro ao buscar ranges da base de dados: {e}")
+        print(" Usando ranges padrão...")
+        return ((1, 7000), (1, 1340000))
+
 class RedisDataGenerator:
     def __init__(self):
         """Inicializa o gerador de dados para Redis"""
         print(" === GERADOR DE DADOS PARA REDIS ===")
         print(f" Adicionando em listas Redis: {REDIS_LIST_KEY_FLIGHTS}, {REDIS_LIST_KEY_HOTELS}")
+
+        # Buscar ranges reais da base de dados
+        print(" Buscando ranges reais da base de dados...")
+        hotel_range, voo_range = get_real_ranges_from_db()
+        self.HOTEL_ID_RANGE = hotel_range
+        self.VOO_ID_RANGE = voo_range
 
         self.running = True
         self.stats = {
@@ -59,7 +100,7 @@ class RedisDataGenerator:
     def generate_flight_reservation(self) -> Dict[str, Any]:
         """Gera dados de uma reserva de voo"""
         id_reserva_voo = random.randint(300, 2000000)
-        id_voo = random.randint(*VOO_ID_RANGE)
+        id_voo = random.randint(*self.VOO_ID_RANGE)
         valor = round(random.uniform(300, 2500), 2)
         data_reserva = datetime(2025, random.randint(1, 12), random.randint(1, 28))
 
@@ -67,19 +108,23 @@ class RedisDataGenerator:
             "id_voo": id_voo,
             "id_reserva_voo": id_reserva_voo,
             "valor": valor,
-            "data_reserva": data_reserva.isoformat()
+            "data_compra": data_reserva.isoformat()
         }
 
     def generate_hotel_reservation(self) -> list:
         """Gera dados de uma reserva de hotel - RETORNA LISTA DE DATAS"""
-        id_hotel = random.randint(*HOTEL_ID_RANGE)
+        id_hotel = random.randint(*self.HOTEL_ID_RANGE)
         valor = round(random.uniform(150, 2000), 2)
         dias_atras = random.randint(0, 15)
-        data_reserva = datetime.now() - timedelta(days=dias_atras)
+        data_reserva = datetime(2025, random.randint(1, 12), random.randint(1, 28))
 
         num_dias = random.randint(1, 3)
-        # Gera uma data aleatória em 2025
-        data_inicial = datetime(2025, random.randint(1, 12), random.randint(1, 28))
+        # Gera uma data inicial entre 3 e 180 dias após a data da reserva, limitado por 2025
+        dias_apos_reserva = random.randint(3, 180)
+        data_inicial = data_reserva + timedelta(days=dias_apos_reserva)
+        # Garantir que a data não ultrapasse 2025
+        if data_inicial.year > 2025:
+            data_inicial = datetime(2025, 12, 31)
 
         registros = []
         for i in range(num_dias):
@@ -90,8 +135,8 @@ class RedisDataGenerator:
                 "id_hotel": id_hotel,
                 "id_reserva_hotel": id_reserva_hotel,
                 "valor": valor,
-                "data_reservada": data_estadia.strftime('%Y-%m-%d'),
-                "data_reserva": data_reserva.isoformat()
+                "data_viagem": data_estadia.strftime('%Y-%m-%d'),
+                "data_compra": data_reserva.isoformat()
             })
 
         return registros
@@ -158,8 +203,8 @@ class RedisDataGenerator:
 
     def run(self):
         """Executa o gerador de dados para Redis"""
-        print(f" Range Hotéis: {HOTEL_ID_RANGE[0]:,} - {HOTEL_ID_RANGE[1]:,}")
-        print(f" Range Voos: {VOO_ID_RANGE[0]:,} - {VOO_ID_RANGE[1]:,}")
+        print(f" Range Hotéis: {self.HOTEL_ID_RANGE[0]:,} - {self.HOTEL_ID_RANGE[1]:,}")
+        print(f" Range Voos: {self.VOO_ID_RANGE[0]:,} - {self.VOO_ID_RANGE[1]:,}")
         print(f" Taxa: {FLIGHTS_PER_MINUTE} voos/min, {HOTELS_PER_MINUTE*2} linhas hotel/min")
         print("\n Pressione Ctrl+C para parar\n")
 
