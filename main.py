@@ -340,6 +340,7 @@ if __name__ == "__main__":
                     db_stats_utils.save_stats_dataframe(stats_month_voos, "stats_month_voos")
                     db_stats_utils.save_stats_dataframe(stats_city_voos, "stats_city_voos")
                     db_stats_utils.save_stats_dataframe(stats_faturamentos_totais, "stats_faturamentos_totais")
+                    db_stats_utils.save_stats_dataframe(stats_ticket_medio, "stats_ticket_medio")
                     db_stats_utils.save_stats_dataframe(stats_stars_hotel, "stats_stars_hotel")
                     db_stats_utils.save_stats_dataframe(stats_estrelas_medias_mes, "stats_estrelas_medias_mes")
                     db_stats_utils.save_stats_dataframe(stats_month_sp_voos, "stats_month_sp_voos")
