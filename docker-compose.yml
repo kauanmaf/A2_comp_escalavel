@@ -169,6 +169,26 @@ services:
     networks:
       - a2_comp_escalavel_default
 
+  # API FastAPI para consulta de estatísticas
+  stats-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    depends_on:
+      postgres-stats:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      PG_STATS_HOST: postgres-stats
+      PG_STATS_PORT: 5432
+      PG_STATS_DB: dados_stats
+      PG_STATS_USER: emap
+      PG_STATS_PASSWORD: emap123
+    networks:
+      - a2_comp_escalavel_default
+    restart: unless-stopped
+
 networks:
   a2_comp_escalavel_default:
 
