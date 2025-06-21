@@ -45,7 +45,6 @@ services:
     networks:
       - a2_comp_escalavel_default
 
-  # PostgreSQL para Estatísticas
   postgres-stats:
     image: postgres:16
     container_name: postgres-stats-db
@@ -54,9 +53,11 @@ services:
       POSTGRES_DB: dados_stats
       POSTGRES_USER: emap
       POSTGRES_PASSWORD: emap123
+      INTERVAL_SECONDS: 20
     volumes:
       - pgdata_stats:/var/lib/postgresql/data
       - ./dados_stats_ini.sql:/docker-entrypoint-initdb.d/dados_stats_ini.sql:ro
+      - ./stats-processor.sh:/docker-entrypoint-initdb.d/stats-processor.sh:ro
     ports:
       - "5433:5432"
     healthcheck:
@@ -66,6 +67,7 @@ services:
       retries: 5
     networks:
       - a2_comp_escalavel_default
+    command: ["bash", "-c", "docker-entrypoint.sh postgres & bash /docker-entrypoint-initdb.d/stats-processor.sh"]
 
   # Serviço para gerar dados fixos (executa uma vez e para)
   data-generator:

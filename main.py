@@ -180,20 +180,20 @@ if __name__ == "__main__":
 
             total_rows = 0
             
-            # Itera sobre cada lista definida e seu threshold
+            list_sizes = {}
             for list_key, threshold in LIST_THRESHOLDS.items():
                 list_size = global_redis_client.llen(list_key)
-                total_rows += list_size
-                print(f"Verificando lista '{total_rows}': Tamanho atual = {list_size}, Threshold = {THREASHOLD}")
+                list_sizes[list_key] = list_size
+                print(f"Verificando lista '{list_key}': Tamanho atual = {list_size}, Threshold = {threshold}")
 
-            if total_rows >= THREASHOLD:
-                print(f"Threshold atingido!")
+            # Só processa se TODAS as listas atingirem seus thresholds
+            if all(list_sizes[key] >= LIST_THRESHOLDS[key] for key in LIST_THRESHOLDS):
+                print(f"Threshold atingido para todas as listas!")
 
-                # Ler dados do Redis
-                raw_messages_hoteis = global_redis_client.lrange("raw_hotels", 0, list_size - 1)
-                raw_messages_voos = global_redis_client.lrange("raw_flights", 0, list_size - 1)
-                
-                if not raw_messages_hoteis or not raw_messages_voos:
+                raw_messages_hoteis = global_redis_client.lrange("raw_hotels", 0, list_sizes["raw_hotels"] - 1)
+                raw_messages_voos = global_redis_client.lrange("raw_flights", 0, list_sizes["raw_flights"] - 1)
+
+                if not raw_messages_hoteis and not raw_messages_voos:
                     print(f"Erro após threshold atingido.")
                     continue
 
@@ -346,14 +346,15 @@ if __name__ == "__main__":
                     db_stats_utils.save_stats_dataframe(stats_month_sp_voos, "stats_month_sp_voos")
                     db_stats_utils.save_stats_dataframe(stats_day_sp_voos, "stats_day_sp_voos")
 
-                    # Remove os dados que acabaram de ser processados da lista Redis
-                    global_redis_client.ltrim("raw_hotels", list_size, -1)
-                    global_redis_client.ltrim("raw_flights", list_size, -1)
-                    print(f"Limpos {list_size} mensagens da lista Redis '{list_key}'.")
+                    # Limpa apenas os dados processados de cada lista
+                    global_redis_client.ltrim("raw_hotels", list_sizes["raw_hotels"], -1)
+                    global_redis_client.ltrim("raw_flights", list_sizes["raw_flights"], -1)
+                    print(f"Limpos {list_sizes['raw_hotels']} mensagens da lista Redis 'raw_hotels'.")
+                    print(f"Limpos {list_sizes['raw_flights']} mensagens da lista Redis 'raw_flights'.")
                 else:
                     print(f"Nenhum dado válido para criar DataFrame.")
             else:
-                print(f"Não há dados suficientes para atingir o threshold.")
+                print(f"Não há dados suficientes para atingir o threshold em todas as listas.")
 
         except redis.exceptions.ConnectionError as e:
             print(f"Erro de conexão com Redis: {e}. Tentando reconectar no próximo ciclo...")
