@@ -2,7 +2,9 @@
 set -e
 
 INTERVAL=${INTERVAL_SECONDS:-60}
-PGHOST=localhost
+PGHOST=${PGHOST:-localhost}
+
+export PGPASSWORD="$POSTGRES_PASSWORD"
 
 echo "[stats-processor] Rodando a cada $INTERVAL segundos."
 

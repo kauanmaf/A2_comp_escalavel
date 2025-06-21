@@ -57,7 +57,6 @@ services:
     volumes:
       - pgdata_stats:/var/lib/postgresql/data
       - ./dados_stats_ini.sql:/docker-entrypoint-initdb.d/dados_stats_ini.sql:ro
-      - ./stats-processor.sh:/docker-entrypoint-initdb.d/stats-processor.sh:ro
     ports:
       - "5433:5432"
     healthcheck:
@@ -67,7 +66,7 @@ services:
       retries: 5
     networks:
       - a2_comp_escalavel_default
-    command: ["bash", "-c", "docker-entrypoint.sh postgres & bash /docker-entrypoint-initdb.d/stats-processor.sh"]
+    command: ["bash", "-c", "docker-entrypoint.sh postgres"]
 
   # Serviço para gerar dados fixos (executa uma vez e para)
   data-generator:
@@ -141,6 +140,23 @@ services:
       PG_STATS_USER: emap
       PG_STATS_PASSWORD: emap123
     entrypoint: ["/opt/bitnami/python/bin/python", "main.py"]
+    networks:
+      - a2_comp_escalavel_default
+
+  stats-processor:
+    image: postgres:16
+    depends_on:
+      postgres-stats:
+        condition: service_healthy
+    environment:
+      POSTGRES_DB: dados_stats
+      POSTGRES_USER: emap
+      POSTGRES_PASSWORD: emap123
+      INTERVAL_SECONDS: 20
+      PGHOST: postgres-stats
+    volumes:
+      - ./stats-processor.sh:/stats-processor.sh:ro
+    entrypoint: ["bash", "/stats-processor.sh"]
     networks:
       - a2_comp_escalavel_default
 
