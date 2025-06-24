@@ -17,7 +17,8 @@ RUN pip install --no-cache-dir \
     faker>=19.0.0 \
     boto3 \
     pyarrow \
-    s3fs
+    s3fs \
+    sqlalchemy
 
 # Copia o script do gerador
 COPY generate_fixed_database.py ./
