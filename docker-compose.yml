@@ -144,18 +144,18 @@ services:
 
   # Serviço para o gerador de dados em tempo real
   realtime-data-generator:
-    build:
-      context: .
-      dockerfile: Dockerfile.generator-client
-    depends_on:
-      redis-server:
-        condition: service_started
-    environment:
-      REDIS_HOST: redis-server
-      REDIS_PORT: 6379
-    networks:
-      - a2_comp_escalavel_default
-    restart: "on-failure"
+   build:
+     context: .
+     dockerfile: Dockerfile.generator-client
+   depends_on:
+     redis-server:
+       condition: service_started
+   environment:
+     REDIS_HOST: master.elastic-cache-teste-ce.occ9tt.use1.cache.amazonaws.com
+     REDIS_PORT: 6379
+   networks:
+     - a2_comp_escalavel_default
+   restart: "on-failure"
 
 networks:
   a2_comp_escalavel_default:

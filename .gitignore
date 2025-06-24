@@ -74,3 +74,5 @@ pgdata_stats/
 pgdata_total/
 
 old/
+aws/
+awscliv2.zip
