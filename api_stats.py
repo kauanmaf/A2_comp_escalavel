@@ -139,6 +139,20 @@ def update_stats():
         conn.close()
     return {"status": "success", "message": "Estatísticas atualizadas com sucesso"}
 
+@app.get("/spark_logs", tags=["logs"])
+def get_spark_logs(
+    limit: int = Query(100, ge=1, le=1000, description="Limite de registros retornados"),
+    order: str = Query("desc", pattern="^(asc|desc)$", description="Ordenação por data de início (asc/desc)")
+):
+    order_sql = "DESC" if order.lower() == "desc" else "ASC"
+    query = f"""
+        SELECT id, start_time, end_time, rows_hotels, rows_flights,
+               spark_duration_seconds, db_write_duration_seconds, created_at
+        FROM pipeline_execution_log
+        ORDER BY start_time {order_sql}
+        LIMIT %s
+    """
+    return query_to_dicts(query, (limit,))
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

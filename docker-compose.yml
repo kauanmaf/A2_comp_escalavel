@@ -161,7 +161,7 @@ services:
       POSTGRES_DB: dados_stats
       POSTGRES_USER: emap
       POSTGRES_PASSWORD: emap123
-      INTERVAL_SECONDS: 20
+      INTERVAL_SECONDS: 2000
       PGHOST: postgres-stats
     volumes:
       - ./stats-processor.sh:/stats-processor.sh:ro
@@ -177,6 +177,8 @@ services:
     depends_on:
       postgres-stats:
         condition: service_healthy
+      data-generator:
+        condition: service_completed_successfully
     ports:
       - "8000:8000"
     environment:

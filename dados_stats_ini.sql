@@ -1,3 +1,15 @@
+-- 0. Criação da tabela de log de execução do pipeline
+CREATE TABLE IF NOT EXISTS pipeline_execution_log (
+    id SERIAL PRIMARY KEY,
+    start_time TIMESTAMPTZ NOT NULL,
+    end_time TIMESTAMPTZ NOT NULL,
+    rows_hotels INT NOT NULL,
+    rows_flights INT NOT NULL,
+    spark_duration_seconds DOUBLE PRECISION NOT NULL,
+    db_write_duration_seconds DOUBLE PRECISION NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ==== 1. Tabelas originais de estatísticas ====
 CREATE TABLE IF NOT EXISTS stats_month_hotel (
     company_id TEXT,

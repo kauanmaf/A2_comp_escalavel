@@ -188,7 +188,13 @@ if __name__ == "__main__":
 
             # Só processa se TODAS as listas existem E atingirem seus thresholds
             if all(list_key in list_sizes and list_sizes[list_key] >= LIST_THRESHOLDS[list_key] for list_key in LIST_THRESHOLDS):
-                # print(f"Threshold atingido para todas as listas!")  # Removido log
+                
+                # --- INÍCIO CAPTURA DE TEMPO E QUANTIDADES ---
+                pipeline_start_time = datetime.datetime.now(datetime.timezone.utc)
+                rows_hotels = list_sizes.get("raw_hotels", 0)
+                rows_flights = list_sizes.get("raw_flights", 0)
+                spark_proc_start = time.perf_counter()
+                # --- FIM CAPTURA DE TEMPO E QUANTIDADES ---
 
                 raw_messages_hoteis = global_redis_client.lrange("raw_hotels", 0, list_sizes["raw_hotels"] - 1)
                 raw_messages_voos = global_redis_client.lrange("raw_flights", 0, list_sizes["raw_flights"] - 1)
@@ -331,6 +337,11 @@ if __name__ == "__main__":
                     # print(f"Estatísticas de reservas de voos de SP por dia e companhia:")
                     # stats_day_sp_voos.show()
 
+                    # --- FIM DO PROCESSAMENTO SPARK ---
+                    spark_proc_end = time.perf_counter()
+                    spark_duration = spark_proc_end - spark_proc_start
+                    db_write_start = time.perf_counter()
+                    # --- INÍCIO DA GRAVAÇÃO NO BANCO ---
 
                     db_stats_utils.save_stats_dataframe(stats_month_hotel, "stats_month_hotel") 
                     db_stats_utils.save_stats_dataframe(stats_city_hotel, "stats_city_hotel")
@@ -342,6 +353,20 @@ if __name__ == "__main__":
                     db_stats_utils.save_stats_dataframe(stats_estrelas_medias_mes, "stats_estrelas_medias_mes")
                     db_stats_utils.save_stats_dataframe(stats_month_sp_voos, "stats_month_sp_voos")
                     db_stats_utils.save_stats_dataframe(stats_day_sp_voos, "stats_day_sp_voos")
+
+                    db_write_end = time.perf_counter()
+                    db_write_duration = db_write_end - db_write_start
+                    pipeline_end_time = datetime.datetime.now(datetime.timezone.utc)
+
+                    # Salva o log de execução da pipeline
+                    db_stats_utils.save_pipeline_execution_log(
+                        start_time=pipeline_start_time,
+                        end_time=pipeline_end_time,
+                        rows_hotels=rows_hotels,
+                        rows_flights=rows_flights,
+                        spark_duration_seconds=spark_duration,
+                        db_write_duration_seconds=db_write_duration
+                    )
 
                     # Limpa apenas os dados processados de cada lista
                     global_redis_client.ltrim("raw_hotels", list_sizes["raw_hotels"], -1)

@@ -198,3 +198,39 @@ def force_process_staging():
         raise e
     finally:
         conn.close()
+
+
+def save_pipeline_execution_log(
+    start_time,
+    end_time,
+    rows_hotels,
+    rows_flights,
+    spark_duration_seconds,
+    db_write_duration_seconds
+):
+    conn = get_pg_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO pipeline_execution_log (
+                    start_time, end_time, rows_hotels, rows_flights,
+                    spark_duration_seconds, db_write_duration_seconds
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    start_time,
+                    end_time,
+                    rows_hotels,
+                    rows_flights,
+                    spark_duration_seconds,
+                    db_write_duration_seconds,
+                ),
+            )
+            conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"Erro ao salvar log de execução da pipeline: {str(e)}", flush=True)
+        raise e
+    finally:
+        conn.close()
