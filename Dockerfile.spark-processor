@@ -1,0 +1,46 @@
+# Usa uma imagem base oficial do Spark
+FROM bitnami/spark:3.5.1
+
+# Define the working directory inside the container
+WORKDIR /app
+
+# Temporarily switch to root for dependency installation.
+# It's good practice to switch back to a non-root user for running the application.
+USER root
+
+# Install Python dependencies.
+# Use a requirements.txt file for better dependency management and caching.
+# Also, leverage Docker's build cache by installing dependencies before copying application code.
+COPY requirements-spark.txt .
+RUN /opt/bitnami/python/bin/pip install --no-cache-dir -r requirements-spark.txt
+
+# Copy your application code into the container.
+# This step comes after dependency installation to maximize cache efficiency.
+# If only your application code changes, Docker won't re-run the pip install.
+COPY main.py ./
+COPY pipeline_functions.py ./
+COPY db_stats_utils.py ./
+
+# Define environment variables with sensible defaults.
+# These will be overridden by spark-submit on EMR, but are useful for local testing/documentation.
+# It's good to keep them here for clarity.
+ENV PG_DATA_HOST=a2-comp-escalavel-dados-fixos.c5wzchkcl9jc.us-east-1.rds.amazonaws.com
+ENV PG_DATA_PORT=5432
+ENV PG_DATA_DB=a2-comp-escalavel-dados-fixos
+ENV PG_DATA_USER=A2CompEscalavel
+ENV PG_DATA_PASSWORD=euadoroaemap
+ENV REDIS_HOST=master.elastic-cache-teste-ce.occ9tt.use1.cache.amazonaws.com
+ENV REDIS_PORT=6379
+ENV MONITOR_INTERVAL_SECONDS=5
+ENV LIST_THRESHOLDS_JSON='{"raw_hotels": 50, "raw_flights": 50}'
+
+# Switch back to a non-root user (Bitnami's images usually have one, often 'spark' or '1001')
+# This enhances security by running the application with minimal privileges.
+# You might need to check the exact user for your chosen Bitnami image version.
+# For bitnami images, '1001' is often a good general non-root user.
+USER 1001
+
+# Command to run when the container starts.
+# This CMD will be overridden by the spark-submit command on EMR.
+# It's primarily for local testing of the Docker image itself.
+CMD ["/opt/bitnami/python/bin/python", "main.py"]
