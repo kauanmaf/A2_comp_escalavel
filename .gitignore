@@ -76,3 +76,5 @@ pgdata_total/
 old/
 aws/
 awscliv2.zip
+bash_aws/
+pipeline
