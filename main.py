@@ -106,8 +106,12 @@ def listen_for_stat_requests(spark: SparkSession, redis_conn: redis.Redis):
 
 THREASHOLD = 100
 
-S3_HOTELS_PATH = os.getenv('S3_HOTELS_PATH', 's3://a2-comp-escalavel-dados-fixos/master_data/hoteis/hoteis.parquet')
-S3_FLIGHTS_PATH = os.getenv('S3_FLIGHTS_PATH', 's3://a2-comp-escalavel-dados-fixos/master_data/voos/voos.parquet')
+# Variáveis de ambiente para conexão com o RDS
+PG_MASTER_HOST = os.getenv('PG_MASTER_HOST', 'a2-comp-escalavel-dados-fixos.col2wfyf2csx.us-east-1.rds.amazonaws.com')
+PG_MASTER_PORT = int(os.getenv('PG_MASTER_PORT', 5432))
+PG_MASTER_DB = os.getenv('PG_MASTER_DB', 'postgres')
+PG_MASTER_USER = os.getenv('PG_MASTER_USER', 'A2CompEscalavel')
+PG_MASTER_PASSWORD = os.getenv('PG_MASTER_PASSWORD', 'euadoroaemap')
 
 if __name__ == "__main__":
     spark = SparkSession.builder \
@@ -219,8 +223,23 @@ if __name__ == "__main__":
                 df_voos = df_voos.withColumn(
                     "data_reserva", to_timestamp(col("data_reserva")))
                 
-                df_hoteis_master = spark.read.parquet(S3_HOTELS_PATH)
-                df_voos_master = spark.read.parquet(S3_FLIGHTS_PATH)
+                print(f"Lendo dados mestres de hotéis do RDS: {PG_MASTER_DB}.hoteis")
+                df_hoteis_master = spark.read.format("jdbc") \
+                    .option("url", f"jdbc:postgresql://{PG_MASTER_HOST}:{PG_MASTER_PORT}/{PG_MASTER_DB}") \
+                    .option("dbtable", "hoteis") \
+                    .option("user", PG_MASTER_USER) \
+                    .option("password", PG_MASTER_PASSWORD) \
+                    .load()
+                print(f"Dados mestres de hotéis carregados do RDS.")
+
+                print(f"Lendo dados mestres de voos do RDS: {PG_MASTER_DB}.voos")
+                df_voos_master = spark.read.format("jdbc") \
+                    .option("url", f"jdbc:postgresql://{PG_MASTER_HOST}:{PG_MASTER_PORT}/{PG_MASTER_DB}") \
+                    .option("dbtable", "voos") \
+                    .option("user", PG_MASTER_USER) \
+                    .option("password", PG_MASTER_PASSWORD) \
+                    .load()
+                print(f"Dados mestres de voos carregados do RDS.")
 
                 # Após carregar df_voos_master
                 df_voos_master = df_voos_master \
