@@ -166,8 +166,6 @@ if __name__ == "__main__":
                         col("parsed_payload.id_reserva_hotel").alias("id_reserva_hotel"),
                     )
 
-                    print("Print 17")
-
                     df_voos = df_raw_redis_message_voos.withColumn(
                         "parsed_payload", from_json(col("data"), flight_data_payload_schema)
                     ).select(
