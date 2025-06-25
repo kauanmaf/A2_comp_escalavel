@@ -12,10 +12,11 @@ from typing import Dict, Any
 import uuid
 import json
 import redis
+import os
 
 # Configuração de quantidade por minuto
-FLIGHTS_PER_MINUTE = 2400  # Voos por minuto
-HOTELS_PER_MINUTE = 2400    # Hotéis por minuto (na verdade é metade do total de hotéis) =)
+FLIGHTS_PER_MINUTE = int(os.getenv('FLIGHTS_PER_MINUTE', '50000'))
+HOTELS_PER_MINUTE = int(os.getenv('HOTELS_PER_MINUTE', '50000'))
 
 # Ranges baseados nos dados gerados pelo generate_fixed_database.py
 # Como foram geradas 50 cidades com 50-250 hotéis cada, temos aproximadamente 7000 hotéis
