@@ -1,31 +1,30 @@
 import os
 import pandas as pd
+import psycopg2
 import streamlit as st
 import plotly.express as px
 import calendar
 import unicodedata
-from sqlalchemy import create_engine
 
 # --- Funções de Conexão e Carregamento de Dados ---
 
-def get_sqlalchemy_engine():
-    """Retorna uma engine SQLAlchemy para o banco de dados PostgreSQL."""
-    db_url = (
-        f"postgresql+psycopg2://{os.getenv('PG_STATS_USER', 'A2CompEscalavel')}:"
-        f"{os.getenv('PG_STATS_PASSWORD', 'euadoroaemap')}@"
-        f"{os.getenv('PG_STATS_HOST', 'a2-comp-escalavel-dados-estatisticas.col2wfyf2csx.us-east-1.rds.amazonaws.com')}:"
-        f"{os.getenv('PG_STATS_PORT', '5432')}/"
-        f"{os.getenv('PG_STATS_DB', 'postgres')}"
+def get_pg_connection():
+    """Retorna uma conexão com o banco de dados PostgreSQL."""
+    return psycopg2.connect(
+        host=os.getenv("PG_STATS_HOST", "localhost"),
+        port=os.getenv("PG_STATS_PORT", "5433"),
+        dbname=os.getenv("PG_STATS_DB", "dados_stats"),
+        user=os.getenv("PG_STATS_USER", "emap"),
+        password=os.getenv("PG_STATS_PASSWORD", "emap123"),
     )
-    return create_engine(db_url)
 
 @st.cache_data(ttl=600) # Cache data for 10 minutes
 def load_table(table_name, company_id):
     """Carrega dados de uma tabela específica filtrando por company_id."""
-    engine = get_sqlalchemy_engine()
+    conn = get_pg_connection()
     query = f"SELECT * FROM {table_name} WHERE company_id = %s"
-    with engine.connect() as conn:
-        df = pd.read_sql(query, conn, params=(company_id,))
+    df = pd.read_sql(query, conn, params=(company_id,))
+    conn.close()
     return df
 
 def get_month_name(month_num):
@@ -288,10 +287,10 @@ st.title("📊 Dashboard de Estatísticas por Cliente")
 # --- Seleção de Company ID ---
 
 try:
-    engine = get_sqlalchemy_engine()
-    with engine.connect() as conn:
-        company_ids_df = pd.read_sql("SELECT DISTINCT company_id FROM stats_month_hotel", conn)
-        company_ids = company_ids_df["company_id"].tolist()
+    conn = get_pg_connection()
+    company_ids_df = pd.read_sql("SELECT DISTINCT company_id FROM stats_month_hotel", conn)
+    company_ids = company_ids_df["company_id"].tolist()
+    conn.close()
 except Exception as e:
     st.error(f"Erro ao conectar ao banco de dados para buscar Company IDs: {e}")
     st.stop()
@@ -314,7 +313,7 @@ for section_name in sections_order:
 
     for table in sections_content[section_name]:
         config = TABLE_CONFIG[table]
-        
+
         df = load_table(table, selected_company)
 
         if df.empty:

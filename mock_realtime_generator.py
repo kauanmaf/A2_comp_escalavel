@@ -75,7 +75,7 @@ class RedisDataGenerator:
         id_hotel = random.randint(*HOTEL_ID_RANGE)
         valor = round(random.uniform(150, 2000), 2)
         dias_atras = random.randint(0, 15)
-        data_reserva = datetime.now() - timedelta(days=dias_atras)
+        data_reserva = datetime(2025, random.randint(1, 12), random.randint(1, 28))
 
         num_dias = random.randint(1, 3)
         # Gera uma data aleatória em 2025
