@@ -1,32 +1,60 @@
 import os
 import pandas as pd
+import requests
 import streamlit as st
 import plotly.express as px
 import calendar
 import unicodedata
-from sqlalchemy import create_engine
 
 # --- Funções de Conexão e Carregamento de Dados ---
 
-def get_sqlalchemy_engine():
-    """Retorna uma engine SQLAlchemy para o banco de dados PostgreSQL."""
-    db_url = (
-        f"postgresql+psycopg2://{os.getenv('PG_STATS_USER', 'A2CompEscalavel')}:"
-        f"{os.getenv('PG_STATS_PASSWORD', 'euadoroaemap')}@"
-        f"{os.getenv('PG_STATS_HOST', 'a2-comp-escalavel-dados-estatisticas.col2wfyf2csx.us-east-1.rds.amazonaws.com')}:"
-        f"{os.getenv('PG_STATS_PORT', '5432')}/"
-        f"{os.getenv('PG_STATS_DB', 'postgres')}"
-    )
-    return create_engine(db_url)
+def get_api_base_url():
+    """Retorna a URL base da API."""
+    return os.getenv("API_BASE_URL", "http://13.220.123.135:8000")
 
-@st.cache_data(ttl=600) # Cache data for 10 minutes
+def make_api_request(endpoint, params=None):
+    """Faz uma requisição para a API e retorna os dados."""
+    base_url = get_api_base_url()
+    url = f"{base_url}/{endpoint}"
+    
+    try:
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        st.error(f"Erro ao fazer requisição para a API: {e}")
+        return []
+
+@st.cache_data(ttl=10) # Cache data for 10 seconds
 def load_table(table_name, company_id):
     """Carrega dados de uma tabela específica filtrando por company_id."""
-    engine = get_sqlalchemy_engine()
-    query = f"SELECT * FROM {table_name} WHERE company_id = %s"
-    with engine.connect() as conn:
-        df = pd.read_sql(query, conn, params=(company_id,))
-    return df
+    # Remove o prefixo 'stats_' do nome da tabela para usar o endpoint correto
+    endpoint_name = table_name.replace('stats_', '')
+    endpoint = f"stats/{endpoint_name}/{company_id}"
+    
+    data = make_api_request(endpoint)
+    
+    if data is not None and len(data) > 0:
+        return pd.DataFrame(data)
+    else:
+        return pd.DataFrame()
+
+def get_company_ids():
+    """Busca a lista de company_ids disponíveis na API."""
+    data = make_api_request("clientes")
+    if data is not None and 'clientes' in data:
+        return data['clientes']
+    
+    st.warning("Tentando buscar company_ids pelos dados de estatísticas...")
+    
+    for endpoint_name in ['month_hotel', 'month_voos', 'faturamentos_totais']:
+        data = make_api_request(f"stats/{endpoint_name}")
+        if data is not None and len(data) > 0:
+            df = pd.DataFrame(data)
+            if 'company_id' in df.columns:
+                return sorted(df['company_id'].unique().tolist())
+    
+    return []
 
 def get_month_name(month_num):
     """Retorna o nome abreviado do mês a partir do número."""
@@ -288,12 +316,12 @@ st.title("📊 Dashboard de Estatísticas por Cliente")
 # --- Seleção de Company ID ---
 
 try:
-    engine = get_sqlalchemy_engine()
-    with engine.connect() as conn:
-        company_ids_df = pd.read_sql("SELECT DISTINCT company_id FROM stats_month_hotel", conn)
-        company_ids = company_ids_df["company_id"].tolist()
+    company_ids = get_company_ids()
+    if not company_ids:
+        st.error("Não foi possível carregar a lista de Company IDs da API.")
+        st.stop()
 except Exception as e:
-    st.error(f"Erro ao conectar ao banco de dados para buscar Company IDs: {e}")
+    st.error(f"Erro ao conectar à API para buscar Company IDs: {e}")
     st.stop()
 
 selected_company = st.selectbox("Selecione o Company ID", company_ids)
