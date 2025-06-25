@@ -59,6 +59,19 @@ def plot_stats_month_hotel(df, config):
     fig.update_layout(xaxis_title="Mês de Reserva", yaxis_title="Valor Total")
     return fig
 
+def plot_stats_month_hotel_count(df, config):
+    """Plota a quantidade de hotéis reservados por mês como gráfico de barras."""
+    df['mes_reserva'] = pd.to_numeric(df['mes_reserva'], errors='coerce').fillna(0).astype(int)
+    full_months_df = pd.DataFrame({'month_num': range(1, 13)})
+    df = pd.merge(full_months_df, df, left_on='month_num', right_on='mes_reserva', how='left')
+    df['num_hoteis_reservados'] = df['num_hoteis_reservados'].fillna(0).astype(int)
+    df['month_name'] = df['month_num'].apply(get_month_name)
+    df = df.sort_values(by='month_num')
+    fig = px.bar(df, x='month_name', y='num_hoteis_reservados', title=config["title"])
+    fig.update_traces(marker_color=COLOR_PALETTE["emerald_green"]) # Verde
+    fig.update_layout(xaxis_title="Mês de Reserva", yaxis_title="Número de Hotéis Reservados")
+    return fig
+
 def plot_stats_city_hotel(df, config):
     """Plota até 10 cidades com maior faturamento em hotéis (barras horizontais, sempre ao menos 4 cidades: SP, RJ, BH, Salvador)."""
     def normalize(s):
@@ -143,19 +156,6 @@ def plot_stats_faturamentos_totais(df, config):
     fig = px.line(df, x='month_name', y='total_valor', title=config["title"])
     fig.update_traces(line_color=COLOR_PALETTE["emerald_green"]) # Verde
     fig.update_layout(xaxis_title="Mês de Reserva")
-    return fig
-
-def plot_stats_ticket_medio(df, config):
-    """Plota o ticket médio por cidade de destino."""
-    col1, col2 = config["value_columns"]
-    df[col1] = df[col1].fillna(0)
-    df[col2] = df[col2].fillna(0)
-    df['ticket_medio'] = df.apply(
-        lambda row: row[col1] / row[col2] if row[col2] != 0 else 0,
-        axis=1
-    )
-    fig = px.bar(df, x='cidade_destino', y='ticket_medio', title=config["title"])
-    fig.update_traces(marker_color=COLOR_PALETTE["emerald_green"]) # Verde
     return fig
 
 def plot_stats_stars_hotel(df, config):
@@ -244,6 +244,10 @@ TABLE_CONFIG = {
     "stats_month_hotel": {
         "title": "Valores de Hotéis por Mês de Reserva", "section": "Hoteis",
         "plot_func": plot_stats_month_hotel
+    },
+    "stats_month_hotel_count": {
+        "title": "Número de Hotéis Reservados por Mês", "section": "Hoteis",
+        "plot_func": plot_stats_month_hotel_count
     },
     "stats_city_hotel": {
         "title": "Top 10 Cidades com Maior Faturamento em Hotéis", "section": "Hoteis",

@@ -52,19 +52,27 @@ CREATE TABLE IF NOT EXISTS stats_faturamentos_totais (
 CREATE INDEX IF NOT EXISTS idx_stats_faturamentos_totais_company ON stats_faturamentos_totais(company_id);
 
 CREATE TABLE IF NOT EXISTS stats_ticket_medio (
-    company_id TEXT,
-    cidade_destino TEXT,
-    sum_valor DOUBLE PRECISION,
-    num_transacoes BIGINT,
-    PRIMARY KEY(company_id, cidade_destino)
+    company_id TEXT NOT NULL,
+    cidade_destino TEXT NOT NULL,
+    sum_valor DOUBLE PRECISION NOT NULL,
+    num_transacoes BIGINT NOT NULL,
+    PRIMARY KEY (company_id, cidade_destino)
 );
 CREATE INDEX IF NOT EXISTS idx_stats_ticket_medio_company ON stats_ticket_medio(company_id);
 
+CREATE TABLE IF NOT EXISTS stats_month_hotel_count (
+    company_id TEXT NOT NULL,
+    mes_reserva INT NOT NULL,
+    num_hoteis_reservados BIGINT NOT NULL,
+    PRIMARY KEY (company_id, mes_reserva)
+);
+CREATE INDEX IF NOT EXISTS idx_stats_month_hotel_count_company ON stats_month_hotel_count(company_id);
+
 CREATE TABLE IF NOT EXISTS stats_stars_hotel (
-    company_id TEXT,
-    estrelas INT,
-    num_reservas BIGINT,
-    PRIMARY KEY(company_id, estrelas)
+    company_id TEXT NOT NULL,
+    estrelas INT NOT NULL,
+    num_reservas BIGINT NOT NULL,
+    PRIMARY KEY (company_id, estrelas)
 );
 CREATE INDEX IF NOT EXISTS idx_stats_stars_hotel_company ON stats_stars_hotel(company_id);
 
@@ -148,6 +156,15 @@ CREATE TABLE IF NOT EXISTS staging_stats_ticket_medio (
     inserido_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_stg_ticket_medio_processed ON staging_stats_ticket_medio(processed);
+
+CREATE TABLE IF NOT EXISTS staging_stats_month_hotel_count (
+    company_id TEXT NOT NULL,
+    mes_reserva INT NOT NULL,
+    num_hoteis_reservados BIGINT NOT NULL,
+    processed BOOLEAN NOT NULL DEFAULT FALSE,
+    inserido_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_stg_month_hotel_count_processed ON staging_stats_month_hotel_count(processed);
 
 CREATE TABLE IF NOT EXISTS staging_stats_stars_hotel (
     company_id TEXT NOT NULL,
@@ -319,7 +336,28 @@ BEGIN
     DELETE FROM staging_stats_ticket_medio WHERE processed = TRUE;
   END IF;
 
-  -- 7. stats_stars_hotel
+  -- 7. stats_month_hotel_count
+  IF EXISTS (SELECT 1 FROM staging_stats_month_hotel_count WHERE processed = FALSE) THEN
+    WITH marked AS (
+      UPDATE staging_stats_month_hotel_count
+      SET processed = TRUE
+      WHERE ctid IN (
+        SELECT ctid FROM staging_stats_month_hotel_count WHERE processed = FALSE LIMIT v_limit
+      )
+      RETURNING company_id, mes_reserva, num_hoteis_reservados
+    ), agg AS (
+      SELECT company_id, mes_reserva, SUM(num_hoteis_reservados) AS soma_hoteis
+      FROM marked
+      GROUP BY company_id, mes_reserva
+    )
+    INSERT INTO stats_month_hotel_count(company_id, mes_reserva, num_hoteis_reservados)
+    SELECT company_id, mes_reserva, soma_hoteis FROM agg
+    ON CONFLICT (company_id, mes_reserva)
+    DO UPDATE SET num_hoteis_reservados = stats_month_hotel_count.num_hoteis_reservados + EXCLUDED.num_hoteis_reservados;
+    DELETE FROM staging_stats_month_hotel_count WHERE processed = TRUE;
+  END IF;
+
+  -- 8. stats_stars_hotel
   IF EXISTS (SELECT 1 FROM staging_stats_stars_hotel WHERE processed = FALSE) THEN
     WITH marked AS (
       UPDATE staging_stats_stars_hotel
@@ -340,7 +378,7 @@ BEGIN
     DELETE FROM staging_stats_stars_hotel WHERE processed = TRUE;
   END IF;
 
-  -- 8. stats_estrelas_medias_mes
+  -- 9. stats_estrelas_medias_mes
   IF EXISTS (SELECT 1 FROM staging_stats_estrelas_medias_mes WHERE processed = FALSE) THEN
     WITH marked AS (
       UPDATE staging_stats_estrelas_medias_mes
@@ -363,7 +401,7 @@ BEGIN
     DELETE FROM staging_stats_estrelas_medias_mes WHERE processed = TRUE;
   END IF;
 
-  -- 9. stats_month_sp_voos
+  -- 10. stats_month_sp_voos
   IF EXISTS (SELECT 1 FROM staging_stats_month_sp_voos WHERE processed = FALSE) THEN
     WITH marked AS (
       UPDATE staging_stats_month_sp_voos
@@ -384,7 +422,7 @@ BEGIN
     DELETE FROM staging_stats_month_sp_voos WHERE processed = TRUE;
   END IF;
 
-  -- 10. stats_day_sp_voos
+  -- 11. stats_day_sp_voos
   IF EXISTS (SELECT 1 FROM staging_stats_day_sp_voos WHERE processed = FALSE) THEN
     WITH marked AS (
       UPDATE staging_stats_day_sp_voos

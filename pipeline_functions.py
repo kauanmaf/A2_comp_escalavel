@@ -14,7 +14,7 @@ def groupby_city_month_hotels(df_joined_hotel):
     df_with_month = df_joined_hotel.withColumn(
         "mes_reserva", month(col("data_reserva"))
     )
-    
+
     df_grouped_stats = df_with_month.groupBy(
         "company_id",
         "cidade",
@@ -29,7 +29,7 @@ def groupby_city_month_flights(df_joined_flights):
     df_with_month = df_joined_flights.withColumn(
         "mes_reserva", month(col("data_reserva"))
     )
-    
+
     df_grouped_stats = df_with_month.groupBy(
         "company_id",
         "cidade_destino",
@@ -84,9 +84,9 @@ def join_profits(df_month_profits_hotels, df_month_profits_flights):
 
     joined_profits = renamed_df_month_profits_hotels.join(renamed_df_month_profits_flights,
                                                           on = ["company_id", "mes_reserva"])
-    
+
     return joined_profits
-    
+
 def sum_profits(joined_profits):
     df_sum_profits = joined_profits.withColumn(
         "total_valor", col("sum_valor_hoteis") + col("sum_valor_voos")
@@ -104,7 +104,7 @@ def average_profits(grouped_city_hotels, grouped_city_flights):
 
     joined_df = renamed_grouped_city_hotels.join(renamed_grouped_city_flights,
                                                  on = ["company_id", "cidade_destino"])
-    
+
     df_average_profits = joined_df \
         .withColumn(
             "sum_valor", col("sum_valor_hoteis") + col("sum_valor_voos")
@@ -112,7 +112,7 @@ def average_profits(grouped_city_hotels, grouped_city_flights):
         .withColumn(
             "num_transacoes", col("num_reservas_hoteis") + col("num_reservas_voos")
         ).drop("num_reservas_hoteis", "num_reservas_voos")
-    
+
     return df_average_profits
 
 def groupby_stars_hotels(df_joined_hotels):
@@ -143,6 +143,25 @@ def groupby_month_stars(df_joined_hotels):
     )
 
     return df_grouped_month_stars
+
+def groupby_month_hotel_count(df_joined_hotels):
+    """
+    Agrupa os hotéis reservados por mês e companhia, contando o número de reservas.
+    """
+    df_with_month = df_joined_hotels.withColumn(
+        "mes_reserva", month(col("data_reserva"))
+    )
+
+    df_grouped_month_hotel_count = df_with_month.groupBy(
+        "company_id",
+        "mes_reserva"
+    ).agg(
+        count("*").alias("num_hoteis_reservados")
+    ).orderBy(
+        "company_id", "mes_reserva"
+    )
+
+    return df_grouped_month_hotel_count
 
 def filter_sao_paulo_flights(df_joined_flights: DataFrame) -> DataFrame:
     # Filter for flights where either 'cidade_origem' or 'cidade_destino' is 'São Paulo'

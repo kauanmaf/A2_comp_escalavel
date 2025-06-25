@@ -1,6 +1,6 @@
 # main.py
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col, count, sum, to_timestamp 
+from pyspark.sql.functions import from_json, col, count, sum, to_timestamp
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType, IntegerType, LongType
 import os
 import redis
@@ -100,13 +100,13 @@ def listen_for_stat_requests(spark: SparkSession, redis_conn: redis.Redis):
             try:
                 data = json.loads(message['data'])
                 print(f"Mensagem de solicitação de estatísticas recebida: {data}")
-                
+
                 # Exemplo de como você processaria a solicitação:
                 company_id = data.get('company_id')
                 request_id = data.get('request_id')
 
                 print(f"Processando solicitação de '{company_id}'. Request ID: {request_id}")
-                                
+
             except json.JSONDecodeError as e:
                 print(f"Erro ao decodificar mensagem JSON do Redis: {e}")
             except Exception as e:
@@ -137,7 +137,7 @@ if __name__ == "__main__":
         'user': PG_USER,
         'password': PG_PASSWORD
     }
-    
+
     # Lista de chaves do Redis e seus thresholds
     list_thresholds_json = os.getenv('LIST_THRESHOLDS_JSON', '{"raw_hotels": 50, "raw_flights": 50}')
     LIST_THRESHOLDS = json.loads(list_thresholds_json)
@@ -179,7 +179,7 @@ if __name__ == "__main__":
                     )
 
             total_rows = 0
-            
+
             list_sizes = {}
             for list_key, threshold in LIST_THRESHOLDS.items():
                 list_size = global_redis_client.llen(list_key)
@@ -188,7 +188,7 @@ if __name__ == "__main__":
 
             # Só processa se TODAS as listas existem E atingirem seus thresholds
             if all(list_key in list_sizes and list_sizes[list_key] >= LIST_THRESHOLDS[list_key] for list_key in LIST_THRESHOLDS):
-                
+
                 # --- INÍCIO CAPTURA DE TEMPO E QUANTIDADES ---
                 pipeline_start_time = datetime.datetime.now(datetime.timezone.utc)
                 rows_hotels = list_sizes.get("raw_hotels", 0)
@@ -213,7 +213,7 @@ if __name__ == "__main__":
                         item['timestamp'] = datetime.datetime.fromisoformat(item['timestamp'])
                         parsed_data_hoteis.append(item)
                     except (json.JSONDecodeError, ValueError):
-                        continue 
+                        continue
                 parsed_data_voos = []
                 for msg in raw_messages_voos:
                     try:
@@ -221,7 +221,7 @@ if __name__ == "__main__":
                         item['timestamp'] = datetime.datetime.fromisoformat(item['timestamp'])
                         parsed_data_voos.append(item)
                     except (json.JSONDecodeError, ValueError):
-                        continue 
+                        continue
 
                 # Cria um DataFrame a partir dos dados lidos
                 if parsed_data_hoteis and parsed_data_voos:
@@ -256,19 +256,19 @@ if __name__ == "__main__":
                     df_hoteis = df_hoteis.withColumn(
                         "data_reservada", to_timestamp(col("data_reservada")))
                     df_hoteis = df_hoteis.withColumn(
-                        "data_reserva", to_timestamp(col("data_reserva")))     
+                        "data_reserva", to_timestamp(col("data_reserva")))
                     df_voos = df_voos.withColumn(
                         "data_reserva", to_timestamp(col("data_reserva")))
-        
+
 
                     set_key_hoteis = pf.create_redis_set(df_hoteis,
-                                                        "id_hotel", 
+                                                        "id_hotel",
                                                         global_redis_client)
-                    
+
                     set_key_voos = pf.create_redis_set(df_voos,
                                                        "id_voo",
                                                        global_redis_client)
-                    
+
                     df_hoteis_master = pf.postgres_by_redis_set(set_key_hoteis,
                                                                 "hoteis",
                                                                 "id_hotel",
@@ -282,7 +282,7 @@ if __name__ == "__main__":
                                                                 spark,
                                                                 global_redis_client,
                                                                 conn)
-                    
+
                     # Após carregar df_voos_master
                     df_voos_master = df_voos_master \
                         .withColumnRenamed("cidade_ida", "cidade_origem") \
@@ -295,6 +295,7 @@ if __name__ == "__main__":
                     stats_city_hotel = grouped_city_hotel.drop("num_reservas")
 
                     stats_month_hotel = pf.groupby_month(all_stats_hotel)
+                    stats_month_hotel_count = pf.groupby_month_hotel_count(joined_hotel)
 
                     joined_voos = pf.join(df_voos_master, df_voos, "id_voo")
                     all_stats_voos = pf.groupby_city_month_flights(joined_voos)
@@ -318,24 +319,26 @@ if __name__ == "__main__":
 
                     # print(f"Estatísticas de faturamento de hotéis por mês e companhia:")
                     # stats_month_hotel.show()
-                    # print(f"Estatísticas de faturamento de hotéis por cidade e companhia:")
-                    # stats_city_hotel.show()
-                    # print(f"Estatísticas de faturamento de voos por mês e companhia:")
-                    # stats_month_voos.show()
-                    # print(f"Estatísticas de faturamento de voos por cidade e companhia:")
-                    # stats_city_voos.show()
-                    # print(f"Estatísticas de faturamento total por mês e companhia:")
-                    # stats_faturamentos_totais.show()
-                    # print(f"Estatísticas de faturamento médio por cidade e companhia:")
-                    # stats_ticket_medio.show()
-                    # print(f"Estatísticas de reservas de hotel por estrela e companhia:")
-                    # stats_stars_hotel.show()
-                    # print(f"Estatísticas de estrela média dos hotéis por mês e companhia:")
-                    # stats_estrelas_medias_mes.show()
-                    # print(f"Estatísticas de voos de SP reservados por mês e companhia:")
-                    # stats_month_sp_voos.show()
-                    # print(f"Estatísticas de reservas de voos de SP por dia e companhia:")
-                    # stats_day_sp_voos.show()
+                    print(f"Estatísticas de CONTAGEM de hotéis reservados por mês e companhia:")
+                    stats_month_hotel_count.show()
+                    print(f"Estatísticas de faturamento de hotéis por cidade e companhia:")
+                    stats_city_hotel.show()
+                    print(f"Estatísticas de faturamento de voos por mês e companhia:")
+                    stats_month_voos.show()
+                    print(f"Estatísticas de faturamento de voos por cidade e companhia:")
+                    stats_city_voos.show()
+                    print(f"Estatísticas de faturamento total por mês e companhia:")
+                    stats_faturamentos_totais.show()
+                    print(f"Estatísticas de faturamento médio por cidade e companhia:")
+                    stats_ticket_medio.show()
+                    print(f"Estatísticas de reservas de hotel por estrela e companhia:")
+                    stats_stars_hotel.show()
+                    print(f"Estatísticas de estrela média dos hotéis por mês e companhia:")
+                    stats_estrelas_medias_mes.show()
+                    print(f"Estatísticas de voos de SP reservados por mês e companhia:")
+                    stats_month_sp_voos.show()
+                    print(f"Estatísticas de reservas de voos de SP por dia e companhia:")
+                    stats_day_sp_voos.show()
 
                     # --- FIM DO PROCESSAMENTO SPARK ---
                     spark_proc_end = time.perf_counter()
@@ -343,8 +346,9 @@ if __name__ == "__main__":
                     db_write_start = time.perf_counter()
                     # --- INÍCIO DA GRAVAÇÃO NO BANCO ---
 
-                    db_stats_utils.save_stats_dataframe(stats_month_hotel, "stats_month_hotel") 
+                    db_stats_utils.save_stats_dataframe(stats_month_hotel, "stats_month_hotel")
                     db_stats_utils.save_stats_dataframe(stats_city_hotel, "stats_city_hotel")
+                    db_stats_utils.save_stats_dataframe(stats_month_hotel_count, "stats_month_hotel_count")
                     db_stats_utils.save_stats_dataframe(stats_month_voos, "stats_month_voos")
                     db_stats_utils.save_stats_dataframe(stats_city_voos, "stats_city_voos")
                     db_stats_utils.save_stats_dataframe(stats_faturamentos_totais, "stats_faturamentos_totais")
@@ -386,6 +390,6 @@ if __name__ == "__main__":
             print(f"Ocorreu um erro inesperado no job Spark: {e}")
             import traceback
             traceback.print_exc()
-            
+
         # print(f"Aguardando {MONITOR_INTERVAL} segundos para a próxima verificação...")
         time.sleep(MONITOR_INTERVAL)

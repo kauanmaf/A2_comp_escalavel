@@ -49,7 +49,7 @@ def query_to_dicts(query, params=None):
 
 @app.get("/health")
 async def health_check():
-    try: 
+    try:
         conn = get_db_connection()
         conn.close()
     except Exception as e:
@@ -66,6 +66,7 @@ STATS_TABLES = {
     "city_voos": "stats_city_voos",
     "faturamentos_totais": "stats_faturamentos_totais",
     "ticket_medio": "stats_ticket_medio",
+    "month_hotel_count": "stats_month_hotel_count",
     "stars_hotel": "stats_stars_hotel",
     "estrelas_medias_mes": "stats_estrelas_medias_mes",
     "month_sp_voos": "stats_month_sp_voos",
@@ -79,12 +80,12 @@ STAGING_TABLES = {
     "city_voos": "staging_stats_city_voos",
     "faturamentos_totais": "staging_stats_faturamentos_totais",
     "ticket_medio": "staging_stats_ticket_medio",
+    "month_hotel_count": "staging_stats_month_hotel_count",
     "stars_hotel": "staging_stats_stars_hotel",
     "estrelas_medias_mes": "staging_stats_estrelas_medias_mes",
     "month_sp_voos": "staging_stats_month_sp_voos",
     "day_sp_voos": "staging_stats_day_sp_voos"
 }
-
 
 @app.get("/stats/{table_name}", tags=["stats"])
 def get_stats_table(table_name: str):

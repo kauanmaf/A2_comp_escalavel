@@ -21,7 +21,7 @@ STAGING_TABLE_CONFIG = {
         "value_columns": ["sum_valor"],
     },
     "staging_stats_city_hotel": {
-        "key_columns": ["cidade"], 
+        "key_columns": ["cidade"],
         "value_columns": ["sum_valor"]
     },
     "staging_stats_month_voos": {
@@ -39,6 +39,10 @@ STAGING_TABLE_CONFIG = {
     "staging_stats_ticket_medio": {
         "key_columns": ["cidade_destino"],
         "value_columns": ["sum_valor", "num_transacoes"],
+    },
+    "staging_stats_month_hotel_count": {
+        "key_columns": ["mes_reserva"],
+        "value_columns": ["num_hoteis_reservados"],
     },
     "staging_stats_stars_hotel": {
         "key_columns": ["estrelas"],
@@ -61,11 +65,12 @@ STAGING_TABLE_CONFIG = {
 # Mapeamento das tabelas originais para staging
 TABLE_TO_STAGING = {
     "stats_month_hotel": "staging_stats_month_hotel",
-    "stats_city_hotel": "staging_stats_city_hotel", 
+    "stats_city_hotel": "staging_stats_city_hotel",
     "stats_month_voos": "staging_stats_month_voos",
     "stats_city_voos": "staging_stats_city_voos",
     "stats_faturamentos_totais": "staging_stats_faturamentos_totais",
     "stats_ticket_medio": "staging_stats_ticket_medio",
+    "stats_month_hotel_count": "staging_stats_month_hotel_count",
     "stats_stars_hotel": "staging_stats_stars_hotel",
     "stats_estrelas_medias_mes": "staging_stats_estrelas_medias_mes",
     "stats_month_sp_voos": "staging_stats_month_sp_voos",
@@ -77,7 +82,7 @@ def save_stats_dataframe(df, table_name):
     """
     Recebe um DataFrame do Spark contendo estatísticas processadas e insere os dados
     na tabela de staging correspondente de forma otimizada usando inserção em lote.
-    
+
     Args:
         df: DataFrame do Spark com os dados processados
         table_name: Nome da tabela original (ex: 'stats_month_hotel')
@@ -87,7 +92,7 @@ def save_stats_dataframe(df, table_name):
     staging_table_name = TABLE_TO_STAGING.get(table_name)
     if not staging_table_name:
         raise ValueError(f"Mapeamento não encontrado para tabela: {table_name}")
-    
+
     # Obtém a configuração da tabela de staging
     config = STAGING_TABLE_CONFIG.get(staging_table_name)
     if not config:
@@ -95,27 +100,27 @@ def save_stats_dataframe(df, table_name):
 
     # Coleta todos os dados do DataFrame para Python
     rows_data = df.collect()
-    
+
     if not rows_data:
         # print(f"Nenhum dado para inserir na tabela {staging_table_name}", flush=True)
         return
-    
+
     # Prepara os dados para inserção em lote
     all_columns = ["company_id"] + config["key_columns"] + config["value_columns"]
     batch_data = []
-    
+
     for row in rows_data:
         data = row.asDict()
         company_id = data["company_id"]
         key_values = [data[col] for col in config["key_columns"]]
         value_values = [data[col] for col in config["value_columns"]]
         batch_data.append([company_id] + key_values + value_values)
-    
+
     # Insere todos os dados em uma única transação
     conn = get_pg_connection()
     try:
         conn.autocommit = False
-        
+
         with conn.cursor() as cursor:
             # Inserção em lote usando executemany para máxima performance
             insert_query = sql.SQL(
@@ -128,12 +133,12 @@ def save_stats_dataframe(df, table_name):
                 fields=sql.SQL(", ").join(map(sql.Identifier, all_columns)),
                 placeholders=sql.SQL(", ").join([sql.Placeholder()] * len(all_columns))
             )
-            
+
             cursor.executemany(insert_query, batch_data)
-            
+
         conn.commit()
         # print(f"Inseridos {len(batch_data)} registros na tabela {staging_table_name}", flush=True)
-        
+
     except Exception as e:
         conn.rollback()
         # print(f"Erro ao inserir dados na staging {staging_table_name}: {str(e)}", flush=True)
@@ -146,13 +151,13 @@ def get_staging_status():
     """
     Retorna o status das tabelas de staging - quantos registros estão pendentes de processamento.
     Útil para monitoramento e debug.
-    
+
     Returns:
         dict: Dicionário com o nome da tabela e quantidade de registros não processados
     """
     conn = get_pg_connection()
     status = {}
-    
+
     try:
         with conn.cursor() as cursor:
             for staging_table in STAGING_TABLE_CONFIG.keys():
@@ -163,35 +168,35 @@ def get_staging_status():
                 )
                 count = cursor.fetchone()[0]
                 status[staging_table] = count
-                
+
     except Exception as e:
         print(f"Erro ao verificar status das tabelas de staging: {str(e)}", flush=True)
         raise e
     finally:
         conn.close()
-    
+
     return status
 
 
 def force_process_staging():
     """
-    Força o processamento das tabelas de staging executando a função 
+    Força o processamento das tabelas de staging executando a função
     processar_todas_estatisticas() manualmente.
-    
+
     Útil para testes e processamento imediato quando necessário.
-    
+
     Returns:
         bool: True se executado com sucesso
     """
     conn = get_pg_connection()
-    
+
     try:
         with conn.cursor() as cursor:
             cursor.execute("SELECT processar_todas_estatisticas()")
             conn.commit()
             # print("Processamento manual das estatísticas executado com sucesso", flush=True)
             return True
-            
+
     except Exception as e:
         conn.rollback()
         print(f"Erro ao executar processamento manual: {str(e)}", flush=True)
