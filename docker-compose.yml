@@ -28,17 +28,13 @@ services:
       context: .
       dockerfile: Dockerfile.generator
     environment:
-      S3_MASTER_DATA_BUCKET: a2-comp-escalavel-dados-fixos
       S3_PREFIX_HOTEIS: master_data/hoteis/
       S3_PREFIX_VOOS: master_data/voos/
-      PG_DATA_HOST: a2-comp-escalavel-dados-fixos.c5wzchkcl9jc.us-east-1.rds.amazonaws.com
+      PG_DATA_HOST: a2-comp-escalavel-dados-fixos.col2wfyf2csx.us-east-1.rds.amazonaws.com
       PG_DATA_PORT: 5432
-      PG_DATA_DB: a2-comp-escalavel-dados-fixos
+      PG_DATA_DB: postgres
       PG_DATA_USER: A2CompEscalavel
       PG_DATA_PASSWORD: euadoroaemap
-      AWS_ACCESS_KEY_ID: ...
-      AWS_SECRET_ACCESS_KEY: ...
-      AWS_SESSION_TOKEN: ...
       AWS_DEFAULT_REGION: us-east-1
     networks:
       - a2_comp_escalavel_default
