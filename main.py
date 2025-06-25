@@ -79,31 +79,6 @@ stat_request_schema = StructType([
 global_spark_session = None
 global_redis_client = None
 
-def listen_for_stat_requests(spark: SparkSession, redis_conn: redis.Redis):
-    """
-    Função que será executada em uma thread separada para escutar solicitações de estatísticas.
-    """
-    pubsub = redis_conn.pubsub()
-    pubsub.subscribe(REDIS_CHANNEL_STAT_REQUEST)
-    print(f"Inscrito no canal Redis '{REDIS_CHANNEL_STAT_REQUEST}' para solicitações de estatísticas.")
-
-    for message in pubsub.listen():
-        if message['type'] == 'message':
-            try:
-                data = json.loads(message['data'])
-                print(f"Mensagem de solicitação de estatísticas recebida: {data}")
-                
-                # Exemplo de como você processaria a solicitação:
-                company_id = data.get('company_id')
-                request_id = data.get('request_id')
-
-                print(f"Processando solicitação de '{company_id}'. Request ID: {request_id}")
-                                
-            except json.JSONDecodeError as e:
-                print(f"Erro ao decodificar mensagem JSON do Redis: {e}")
-            except Exception as e:
-                print(f"Erro inesperado ao processar solicitação de estatísticas: {e}")
-
 THREASHOLD = 100
 
 # Variáveis de ambiente para conexão com o RDS
@@ -117,19 +92,16 @@ if __name__ == "__main__":
     spark = SparkSession.builder \
         .appName("TravelBatchProcessorPersistent") \
         .getOrCreate()
-
-    REDIS_HOST = os.getenv('REDIS_HOST', 'master.elastic-cache-teste-ce.occ9tt.use1.cache.amazonaws.com:6379')
+    
+    REDIS_HOST = os.getenv('REDIS_HOST', 'master.redis-brocker.slp5lw.use1.cache.amazonaws.com')
     REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
     MONITOR_INTERVAL = int(os.getenv('MONITOR_INTERVAL_SECONDS', 5))
     
-    # Lista de chaves do Redis e seus thresholds
-    list_thresholds_json = os.getenv('LIST_THRESHOLDS_JSON', '{"raw_hotels": 50, "raw_flights": 50}')
-    LIST_THRESHOLDS = json.loads(list_thresholds_json)
-
     global_redis_client = None
 
     # Inicializa o cliente Redis para o thread principal e para o listener
     try:
+        print(f"Host: {REDIS_HOST}, port: {REDIS_PORT}")
         global_redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
         global_redis_client.ping()
         print(f"Conectado ao Redis em {REDIS_HOST}:{REDIS_PORT}.")
@@ -137,186 +109,177 @@ if __name__ == "__main__":
         print(f"Erro inicial de conexão com Redis: {e}. Exiting.")
         exit(1)
 
-    # Inicia a thread que escuta por solicitações de estatísticas
-    stat_listener_thread = threading.Thread(target=listen_for_stat_requests, args=(global_spark_session, global_redis_client))
-    stat_listener_thread.daemon = True
-    stat_listener_thread.start()
-    print("Thread de escuta de estatísticas iniciada.")
-
     conn = None
 
     # Loop principal que mantém o Spark job acordado
     try:
-        # if global_redis_client is None:
-        #     global_redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
-        #     global_redis_client.ping()
-        #     print(f"Conectado ao Redis em {REDIS_HOST}:{REDIS_PORT}.")
+        while True:
+            list_size_hoteis = global_redis_client.llen("raw_hotels")
+            list_size_voos = global_redis_client.llen("raw_flights")
+            total_rows = list_size_hoteis + list_size_voos
+            print(f"Verificando listas: Tamanho atual Hoteis = {list_size_hoteis}, Voos = {list_size_voos}. Total = {total_rows}")
 
-        list_size_hoteis = global_redis_client.llen("raw_hotels")
-        list_size_voos = global_redis_client.llen("raw_flights")
-        total_rows = list_size_hoteis + list_size_voos
-        print(f"Verificando listas: Tamanho atual Hoteis = {list_size_hoteis}, Voos = {list_size_voos}. Total = {total_rows}")
+            if total_rows >= THREASHOLD:
+                print(f"Threshold atingido! Processando {total_rows} registros.")
 
-        if total_rows >= THREASHOLD:
-            print(f"Threshold atingido! Processando {total_rows} registros.")
+                raw_messages_hoteis = global_redis_client.lrange("raw_hotels", 0, list_size_hoteis - 1)
+                raw_messages_voos = global_redis_client.lrange("raw_flights", 0, list_size_voos - 1)
 
-            raw_messages_hoteis = global_redis_client.lrange("raw_hotels", 0, list_size_hoteis - 1)
-            raw_messages_voos = global_redis_client.lrange("raw_flights", 0, list_size_voos - 1)
+                # Converte as strings JSON em dicionários Python
+                parsed_data_hoteis = []
+                for msg in raw_messages_hoteis:
+                    try:
+                        item = json.loads(msg)
+                        # Converte a string de timestamp para objeto datetime
+                        item['timestamp'] = datetime.datetime.fromisoformat(item['timestamp'])
+                        parsed_data_hoteis.append(item)
+                    except (json.JSONDecodeError, ValueError) as e:
+                        print(f"Erro ao parsear ou converter mensagem JSON/timestamp de hotéis")
+                        continue 
+                parsed_data_voos = []
+                for msg in raw_messages_voos:
+                    try:
+                        item = json.loads(msg)
+                        # Converte a string de timestamp para objeto datetime
+                        item['timestamp'] = datetime.datetime.fromisoformat(item['timestamp'])
+                        parsed_data_voos.append(item)
+                    except (json.JSONDecodeError, ValueError) as e:
+                        print(f"Erro ao parsear ou converter mensagem JSON/timestamp de voos")
+                        continue 
 
-            # Converte as strings JSON em dicionários Python
-            parsed_data_hoteis = []
-            for msg in raw_messages_hoteis:
-                try:
-                    item = json.loads(msg)
-                    # Converte a string de timestamp para objeto datetime
-                    item['timestamp'] = datetime.datetime.fromisoformat(item['timestamp'])
-                    parsed_data_hoteis.append(item)
-                except (json.JSONDecodeError, ValueError) as e:
-                    print(f"Erro ao parsear ou converter mensagem JSON/timestamp de hotéis")
-                    continue 
-            parsed_data_voos = []
-            for msg in raw_messages_voos:
-                try:
-                    item = json.loads(msg)
-                    # Converte a string de timestamp para objeto datetime
-                    item['timestamp'] = datetime.datetime.fromisoformat(item['timestamp'])
-                    parsed_data_voos.append(item)
-                except (json.JSONDecodeError, ValueError) as e:
-                    print(f"Erro ao parsear ou converter mensagem JSON/timestamp de voos")
-                    continue 
+                # Cria um DataFrame a partir dos dados lidos
+                if parsed_data_hoteis and parsed_data_voos:
+                    df_raw_redis_message_hoteis = spark.createDataFrame(parsed_data_hoteis, schema=raw_redis_message_schema)
+                    df_raw_redis_message_voos = spark.createDataFrame(parsed_data_voos, schema=raw_redis_message_schema)
+                    print(f"DataFrames raw criados")
 
-            # Cria um DataFrame a partir dos dados lidos
-            if parsed_data_hoteis and parsed_data_voos:
+                    # Parseia o JSON na coluna 'data' usando o schema de payload
+                    df_hoteis = df_raw_redis_message_hoteis.withColumn(
+                        "parsed_payload", from_json(col("data"), hotel_data_payload_schema)
+                    ).select(
+                        col("company_id"),
+                        col("timestamp").alias("event_timestamp"),
+                        col("parsed_payload.id_hotel").alias("id_hotel"),
+                        col("parsed_payload.valor").alias("valor"),
+                        col("parsed_payload.data_reservada").alias("data_reservada"),
+                        col("parsed_payload.data_reserva").alias("data_reserva"),
+                        col("parsed_payload.id_reserva_hotel").alias("id_reserva_hotel"),
+                    )
 
-                df_raw_redis_message_hoteis = spark.createDataFrame(parsed_data_hoteis, schema=raw_redis_message_schema)
-                df_raw_redis_message_voos = spark.createDataFrame(parsed_data_voos, schema=raw_redis_message_schema)
-                print(f"DataFrames raw criados")
+                    print("Print 17")
 
-                # Parseia o JSON na coluna 'data' usando o schema de payload
-                df_hoteis = df_raw_redis_message_hoteis.withColumn(
-                    "parsed_payload", from_json(col("data"), hotel_data_payload_schema)
-                ).select(
-                    col("company_id"),
-                    col("timestamp").alias("event_timestamp"),
-                    col("parsed_payload.id_hotel").alias("id_hotel"),
-                    col("parsed_payload.valor").alias("valor"),
-                    col("parsed_payload.data_reservada").alias("data_reservada"),
-                    col("parsed_payload.data_reserva").alias("data_reserva"),
-                    col("parsed_payload.id_reserva_hotel").alias("id_reserva_hotel"),
-                )
-                df_voos = df_raw_redis_message_voos.withColumn(
-                    "parsed_payload", from_json(col("data"), flight_data_payload_schema)
-                ).select(
-                    col("company_id"),
-                    col("timestamp").alias("event_timestamp"),
-                    col("parsed_payload.id_voo").alias("id_voo"),
-                    col("parsed_payload.valor").alias("valor"),
-                    col("parsed_payload.id_reserva_voo").alias("id_reserva_voo"),
-                    col("parsed_payload.data_reserva").alias("data_reserva"),
-                )
+                    df_voos = df_raw_redis_message_voos.withColumn(
+                        "parsed_payload", from_json(col("data"), flight_data_payload_schema)
+                    ).select(
+                        col("company_id"),
+                        col("timestamp").alias("event_timestamp"),
+                        col("parsed_payload.id_voo").alias("id_voo"),
+                        col("parsed_payload.valor").alias("valor"),
+                        col("parsed_payload.id_reserva_voo").alias("id_reserva_voo"),
+                        col("parsed_payload.data_reserva").alias("data_reserva"),
+                    )
 
-                # Converte a coluna 'data_reservada' para TimestampType
-                df_hoteis = df_hoteis.withColumn(
-                    "data_reservada", to_timestamp(col("data_reservada")))
-                df_hoteis = df_hoteis.withColumn(
-                    "data_reserva", to_timestamp(col("data_reserva")))     
-                df_voos = df_voos.withColumn(
-                    "data_reserva", to_timestamp(col("data_reserva")))
-                
-                print(f"Lendo dados mestres de hotéis do RDS: {PG_MASTER_DB}.hoteis")
-                df_hoteis_master = spark.read.format("jdbc") \
-                    .option("url", f"jdbc:postgresql://{PG_MASTER_HOST}:{PG_MASTER_PORT}/{PG_MASTER_DB}") \
-                    .option("dbtable", "hoteis") \
-                    .option("user", PG_MASTER_USER) \
-                    .option("password", PG_MASTER_PASSWORD) \
-                    .load()
-                print(f"Dados mestres de hotéis carregados do RDS.")
+                    # Converte a coluna 'data_reservada' para TimestampType
+                    df_hoteis = df_hoteis.withColumn(
+                        "data_reservada", to_timestamp(col("data_reservada")))
+                    df_hoteis = df_hoteis.withColumn(
+                        "data_reserva", to_timestamp(col("data_reserva")))     
+                    df_voos = df_voos.withColumn(
+                        "data_reserva", to_timestamp(col("data_reserva")))
+                    
+                    print(f"Lendo dados mestres de hotéis do RDS: {PG_MASTER_DB}.hoteis")
+                    df_hoteis_master = spark.read.format("jdbc") \
+                        .option("url", f"jdbc:postgresql://{PG_MASTER_HOST}:{PG_MASTER_PORT}/{PG_MASTER_DB}") \
+                        .option("dbtable", "hoteis") \
+                        .option("user", PG_MASTER_USER) \
+                        .option("password", PG_MASTER_PASSWORD) \
+                        .load()
+                    print(f"Dados mestres de hotéis carregados do RDS.")
 
-                print(f"Lendo dados mestres de voos do RDS: {PG_MASTER_DB}.voos")
-                df_voos_master = spark.read.format("jdbc") \
-                    .option("url", f"jdbc:postgresql://{PG_MASTER_HOST}:{PG_MASTER_PORT}/{PG_MASTER_DB}") \
-                    .option("dbtable", "voos") \
-                    .option("user", PG_MASTER_USER) \
-                    .option("password", PG_MASTER_PASSWORD) \
-                    .load()
-                print(f"Dados mestres de voos carregados do RDS.")
+                    print(f"Lendo dados mestres de voos do RDS: {PG_MASTER_DB}.voos")
+                    df_voos_master = spark.read.format("jdbc") \
+                        .option("url", f"jdbc:postgresql://{PG_MASTER_HOST}:{PG_MASTER_PORT}/{PG_MASTER_DB}") \
+                        .option("dbtable", "voos") \
+                        .option("user", PG_MASTER_USER) \
+                        .option("password", PG_MASTER_PASSWORD) \
+                        .load()
+                    print(f"Dados mestres de voos carregados do RDS.")
 
-                # Após carregar df_voos_master
-                df_voos_master = df_voos_master \
-                    .withColumnRenamed("cidade_ida", "cidade_origem") \
-                    .withColumnRenamed("cidade_volta", "cidade_destino")
+                    # Após carregar df_voos_master
+                    df_voos_master = df_voos_master \
+                        .withColumnRenamed("cidade_ida", "cidade_origem") \
+                        .withColumnRenamed("cidade_volta", "cidade_destino")
 
-                joined_hotel = pf.join(df_hoteis_master, df_hoteis, "id_hotel")
-                all_stats_hotel = pf.groupby_city_month_hotels(joined_hotel)
+                    joined_hotel = pf.join(df_hoteis_master, df_hoteis, "id_hotel")
+                    all_stats_hotel = pf.groupby_city_month_hotels(joined_hotel)
 
-                grouped_city_hotel = pf.groupby_city_hotels(all_stats_hotel)
-                stats_city_hotel = grouped_city_hotel.drop("num_reservas")
+                    grouped_city_hotel = pf.groupby_city_hotels(all_stats_hotel)
+                    stats_city_hotel = grouped_city_hotel.drop("num_reservas")
 
-                stats_month_hotel = pf.groupby_month(all_stats_hotel)
+                    stats_month_hotel = pf.groupby_month(all_stats_hotel)
 
-                joined_voos = pf.join(df_voos_master, df_voos, "id_voo")
-                all_stats_voos = pf.groupby_city_month_flights(joined_voos)
+                    joined_voos = pf.join(df_voos_master, df_voos, "id_voo")
+                    all_stats_voos = pf.groupby_city_month_flights(joined_voos)
 
-                grouped_city_voos = pf.groupby_city_flights(all_stats_voos)
-                stats_city_voos = grouped_city_voos.drop("num_reservas")
+                    grouped_city_voos = pf.groupby_city_flights(all_stats_voos)
+                    stats_city_voos = grouped_city_voos.drop("num_reservas")
 
-                stats_month_voos = pf.groupby_month(all_stats_voos)
+                    stats_month_voos = pf.groupby_month(all_stats_voos)
 
-                joined_faturamentos = pf.join_profits(stats_month_hotel, stats_month_voos)
-                stats_faturamentos_totais = pf.sum_profits(joined_faturamentos)
+                    joined_faturamentos = pf.join_profits(stats_month_hotel, stats_month_voos)
+                    stats_faturamentos_totais = pf.sum_profits(joined_faturamentos)
 
-                stats_ticket_medio = pf.average_profits(grouped_city_hotel, grouped_city_voos)
+                    stats_ticket_medio = pf.average_profits(grouped_city_hotel, grouped_city_voos)
 
-                stats_stars_hotel = pf.groupby_stars_hotels(joined_hotel)
-                stats_estrelas_medias_mes = pf.groupby_month_stars(joined_hotel)
+                    stats_stars_hotel = pf.groupby_stars_hotels(joined_hotel)
+                    stats_estrelas_medias_mes = pf.groupby_month_stars(joined_hotel)
 
-                filtered_sp_voos = pf.filter_sao_paulo_flights(joined_voos)
-                stats_month_sp_voos = pf.groupby_month_sp_flights(filtered_sp_voos)
-                stats_day_sp_voos = pf.groupby_day_sp_flights(filtered_sp_voos)
+                    filtered_sp_voos = pf.filter_sao_paulo_flights(joined_voos)
+                    stats_month_sp_voos = pf.groupby_month_sp_flights(filtered_sp_voos)
+                    stats_day_sp_voos = pf.groupby_day_sp_flights(filtered_sp_voos)
 
-                print(f"Estatísticas de faturamento de hotéis por mês e companhia:")
-                stats_month_hotel.show()
-                print(f"Estatísticas de faturamento de hotéis por cidade e companhia:")
-                stats_city_hotel.show()
-                print(f"Estatísticas de faturamento de voos por mês e companhia:")
-                stats_month_voos.show()
-                print(f"Estatísticas de faturamento de voos por cidade e companhia:")
-                stats_city_voos.show()
-                print(f"Estatísticas de faturamento total por mês e companhia:")
-                stats_faturamentos_totais.show()
-                print(f"Estatísticas de faturamento médio por cidade e companhia:")
-                stats_ticket_medio.show()
-                print(f"Estatísticas de reservas de hotel por estrela e companhia:")
-                stats_stars_hotel.show()
-                print(f"Estatísticas de estrela média dos hotéis por mês e companhia:")
-                stats_estrelas_medias_mes.show()
-                print(f"Estatísticas de voos de SP reservados por mês e companhia:")
-                stats_month_sp_voos.show()
-                print(f"Estatísticas de reservas de voos de SP por dia e companhia:")
-                stats_day_sp_voos.show()
+                    # print(f"Estatísticas de faturamento de hotéis por mês e companhia:")
+                    # stats_month_hotel.show()
+                    # print(f"Estatísticas de faturamento de hotéis por cidade e companhia:")
+                    # stats_city_hotel.show()
+                    # print(f"Estatísticas de faturamento de voos por mês e companhia:")
+                    # stats_month_voos.show()
+                    # print(f"Estatísticas de faturamento de voos por cidade e companhia:")
+                    # stats_city_voos.show()
+                    # print(f"Estatísticas de faturamento total por mês e companhia:")
+                    # stats_faturamentos_totais.show()
+                    # print(f"Estatísticas de faturamento médio por cidade e companhia:")
+                    # stats_ticket_medio.show()
+                    # print(f"Estatísticas de reservas de hotel por estrela e companhia:")
+                    # stats_stars_hotel.show()
+                    # print(f"Estatísticas de estrela média dos hotéis por mês e companhia:")
+                    # stats_estrelas_medias_mes.show()
+                    # print(f"Estatísticas de voos de SP reservados por mês e companhia:")
+                    # stats_month_sp_voos.show()
+                    # print(f"Estatísticas de reservas de voos de SP por dia e companhia:")
+                    # stats_day_sp_voos.show()
 
+                    db_stats_utils.save_stats_dataframe(stats_month_hotel, "stats_month_hotel") 
+                    db_stats_utils.save_stats_dataframe(stats_city_hotel, "stats_city_hotel")
+                    db_stats_utils.save_stats_dataframe(stats_month_voos, "stats_month_voos")
+                    db_stats_utils.save_stats_dataframe(stats_city_voos, "stats_city_voos")
+                    db_stats_utils.save_stats_dataframe(stats_faturamentos_totais, "stats_faturamentos_totais")
+                    db_stats_utils.save_stats_dataframe(stats_ticket_medio, "stats_ticket_medio")
+                    db_stats_utils.save_stats_dataframe(stats_stars_hotel, "stats_stars_hotel")
+                    db_stats_utils.save_stats_dataframe(stats_estrelas_medias_mes, "stats_estrelas_medias_mes")
+                    db_stats_utils.save_stats_dataframe(stats_month_sp_voos, "stats_month_sp_voos")
+                    db_stats_utils.save_stats_dataframe(stats_day_sp_voos, "stats_day_sp_voos")
 
-                db_stats_utils.save_stats_dataframe(stats_month_hotel, "stats_month_hotel") 
-                db_stats_utils.save_stats_dataframe(stats_city_hotel, "stats_city_hotel")
-                db_stats_utils.save_stats_dataframe(stats_month_voos, "stats_month_voos")
-                db_stats_utils.save_stats_dataframe(stats_city_voos, "stats_city_voos")
-                db_stats_utils.save_stats_dataframe(stats_faturamentos_totais, "stats_faturamentos_totais")
-                db_stats_utils.save_stats_dataframe(stats_ticket_medio, "stats_ticket_medio")
-                db_stats_utils.save_stats_dataframe(stats_stars_hotel, "stats_stars_hotel")
-                db_stats_utils.save_stats_dataframe(stats_estrelas_medias_mes, "stats_estrelas_medias_mes")
-                db_stats_utils.save_stats_dataframe(stats_month_sp_voos, "stats_month_sp_voos")
-                db_stats_utils.save_stats_dataframe(stats_day_sp_voos, "stats_day_sp_voos")
-
-                # Limpeza atômica no Redis após o processamento bem-sucedido
-                global_redis_client.ltrim("raw_hotels", list_size_hoteis, -1)
-                global_redis_client.ltrim("raw_flights", list_size_voos, -1)
-                print(f"Limpos {list_size_hoteis} mensagens da lista Redis 'raw_hotels'.")
-                print(f"Limpos {list_size_voos} mensagens da lista Redis 'raw_flights'.")
+                    # Limpeza atômica no Redis após o processamento bem-sucedido
+                    global_redis_client.ltrim("raw_hotels", list_size_hoteis, -1)
+                    global_redis_client.ltrim("raw_flights", list_size_voos, -1)
+                    print(f"Limpos {list_size_hoteis} mensagens da lista Redis 'raw_hotels'.")
+                    print(f"Limpos {list_size_voos} mensagens da lista Redis 'raw_flights'.")
+                else:
+                    print(f"Nenhum dado válido para criar DataFrame.")
             else:
-                print(f"Nenhum dado válido para criar DataFrame.")
-        else:
-            print(f"Não há dados suficientes para atingir o threshold. Total: {total_rows}, Threshold: {THREASHOLD}")
-            exit(0)
+                print(f"Não há dados suficientes para atingir o threshold. Total: {total_rows}, Threshold: {THREASHOLD}")
+                time.sleep(5)
 
     except redis.exceptions.ConnectionError as e:
         print(f"Erro de conexão com Redis: {e}. Tentando reconectar no próximo ciclo...")
