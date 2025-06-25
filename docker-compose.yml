@@ -24,7 +24,9 @@ services:
 
   # PostgreSQL para Dados Totais
   postgres-data:
-    image: postgres:16
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres-data
     container_name: postgres-data-db
     restart: always
     environment:
@@ -33,20 +35,21 @@ services:
       POSTGRES_PASSWORD: emap123
     volumes:
       - pgdata_total:/var/lib/postgresql/data
-      # Se quiser init para este banco:
-      # - ./init_data.sql:/docker-entrypoint-initdb.d/init_data.sql:ro
     ports:
       - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
     networks:
       - a2_comp_escalavel_default
 
   postgres-stats:
-    image: postgres:16
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres-stats
     container_name: postgres-stats-db
     restart: always
     environment:
@@ -56,17 +59,16 @@ services:
       INTERVAL_SECONDS: 20
     volumes:
       - pgdata_stats:/var/lib/postgresql/data
-      - ./dados_stats_ini.sql:/docker-entrypoint-initdb.d/dados_stats_ini.sql:ro
     ports:
       - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
     networks:
       - a2_comp_escalavel_default
-    command: ["bash", "-c", "docker-entrypoint.sh postgres"]
 
   # Serviço para gerar dados fixos (executa uma vez e para)
   data-generator:
@@ -140,32 +142,6 @@ services:
       PG_STATS_USER: emap
       PG_STATS_PASSWORD: emap123
     entrypoint: ["/opt/bitnami/python/bin/python", "main.py"]
-    networks:
-      - a2_comp_escalavel_default
-
-  stats-processor:
-    image: postgres:16
-    depends_on:
-      spark-master:
-        condition: service_started
-      redis-server:
-        condition: service_started
-      postgres-data:
-        condition: service_healthy
-      postgres-stats:
-        condition: service_healthy
-      data-generator:
-        condition: service_completed_successfully
-    restart: always
-    environment:
-      POSTGRES_DB: dados_stats
-      POSTGRES_USER: emap
-      POSTGRES_PASSWORD: emap123
-      INTERVAL_SECONDS: 2000
-      PGHOST: postgres-stats
-    volumes:
-      - ./stats-processor.sh:/stats-processor.sh:ro
-    entrypoint: ["bash", "/stats-processor.sh"]
     networks:
       - a2_comp_escalavel_default
 

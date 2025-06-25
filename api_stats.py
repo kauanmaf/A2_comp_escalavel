@@ -1,12 +1,12 @@
-from fastapi import FastAPI, HTTPException, Query
-from pydantic import BaseModel
-from typing import List, Optional
-import psycopg2
-import pandas as pd
 import os
-from datetime import date
+import threading
+
+import pandas as pd
+import psycopg2
 import uvicorn
+from fastapi import FastAPI, HTTPException, Query
 from sqlalchemy import create_engine
+import time
 
 # Configuração da aplicação FastAPI
 app = FastAPI(
@@ -154,5 +154,29 @@ def get_spark_logs(
     """
     return query_to_dicts(query, (limit,))
 
+def start_stats_processor():
+    def run():
+        interval = int(os.getenv("INTERVAL_SECONDS", 20))
+        while True:
+            try:
+                print("[stats-processor] Executando processar_todas_estatisticas()...")
+                conn = get_db_connection()
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT processar_todas_estatisticas();")
+                    conn.commit()
+                conn.close()
+            except Exception as e:
+                print(f"[stats-processor] Erro: {e}")
+            time.sleep(interval)
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+
+@app.on_event("startup")
+def on_startup():
+    if __name__ == "__main__" or os.getenv("RUN_STATS_PROCESSOR", "1") == "1":
+        start_stats_processor()
+
 if __name__ == "__main__":
+    start_stats_processor()
     uvicorn.run(app, host="0.0.0.0", port=8000)

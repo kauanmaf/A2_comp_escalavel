@@ -1,0 +1,26 @@
+# Dockerfile personalizado para postgres-data
+FROM postgres:16
+
+# Instala utilitários necessários
+RUN apt-get update && apt-get install -y \
+    curl \
+    netcat-traditional \
+    && rm -rf /var/lib/apt/lists/*
+
+# Cria um script de inicialização personalizado
+COPY init-postgres-data.sh /docker-entrypoint-initdb.d/00-init-postgres-data.sh
+
+# Torna o script executável
+RUN chmod +x /docker-entrypoint-initdb.d/00-init-postgres-data.sh
+
+# Define variáveis de ambiente padrão
+ENV POSTGRES_DB=dados_gerais
+ENV POSTGRES_USER=emap
+ENV POSTGRES_PASSWORD=emap123
+
+# Expõe a porta
+EXPOSE 5432
+
+# Usa o entrypoint padrão do PostgreSQL
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["postgres"]
