@@ -11,22 +11,22 @@ import unicodedata
 def get_pg_connection():
     """Retorna uma conexão com o banco de dados PostgreSQL."""
     # Configuração para AWS (padrão)
-    return psycopg2.connect(
-        host=os.getenv("PG_STATS_HOST", "a2-comp-escalavel-dados-estatisticas.col2wfyf2csx.us-east-1.rds.amazonaws.com"),
-        port=os.getenv("PG_STATS_PORT", "5432"),
-        dbname=os.getenv("PG_STATS_DB", "postgres"),
-        user=os.getenv("PG_STATS_USER", "A2CompEscalavel"),
-        password=os.getenv("PG_STATS_PASSWORD", "euadoroaemap"),
-    )
+    # return psycopg2.connect(
+    #     host=os.getenv("PG_STATS_HOST", "a2-comp-escalavel-dados-estatisticas.col2wfyf2csx.us-east-1.rds.amazonaws.com"),
+    #     port=os.getenv("PG_STATS_PORT", "5432"),
+    #     dbname=os.getenv("PG_STATS_DB", "postgres"),
+    #     user=os.getenv("PG_STATS_USER", "A2CompEscalavel"),
+    #     password=os.getenv("PG_STATS_PASSWORD", "euadoroaemap"),
+    # )
 
     # Configuração para ambiente local (comentada)
-    # return psycopg2.connect(
-    #     host=os.getenv("PG_STATS_HOST", "localhost"),
-    #     port=os.getenv("PG_STATS_PORT", "5433"),
-    #     dbname=os.getenv("PG_STATS_DB", "dados_stats"),
-    #     user=os.getenv("PG_STATS_USER", "emap"),
-    #     password=os.getenv("PG_STATS_PASSWORD", "emap123"),
-    # )
+    return psycopg2.connect(
+        host=os.getenv("PG_STATS_HOST", "localhost"),
+        port=os.getenv("PG_STATS_PORT", "5433"),
+        dbname=os.getenv("PG_STATS_DB", "dados_stats"),
+        user=os.getenv("PG_STATS_USER", "emap"),
+        password=os.getenv("PG_STATS_PASSWORD", "emap123"),
+    )
 
 @st.cache_data(ttl=600) # Cache data for 10 minutes
 def load_table(table_name, company_id):

@@ -26,7 +26,7 @@ services:
   postgres-data:
     build:
       context: .
-      dockerfile: Dockerfile.postgres-data
+      dockerfile: database/Dockerfile.postgres-data
     container_name: postgres-data-db
     restart: always
     environment:
@@ -49,7 +49,7 @@ services:
   postgres-stats:
     build:
       context: .
-      dockerfile: Dockerfile.postgres-stats
+      dockerfile: database/Dockerfile.postgres-stats
     container_name: postgres-stats-db
     restart: always
     environment:
@@ -74,7 +74,7 @@ services:
   data-generator:
     build:
       context: .
-      dockerfile: Dockerfile.generator
+      dockerfile: generators/Dockerfile.generator
     depends_on:
       postgres-data:
         condition: service_healthy
@@ -110,7 +110,7 @@ services:
   spark-batch-processor:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
     depends_on:
       spark-master:
         condition: service_started
@@ -149,7 +149,7 @@ services:
   stats-api:
     build:
       context: .
-      dockerfile: Dockerfile.api
+      dockerfile: api/Dockerfile.api
     depends_on:
       postgres-stats:
         condition: service_healthy

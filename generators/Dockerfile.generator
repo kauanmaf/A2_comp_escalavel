@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir \
     faker>=19.0.0
 
 # Copia o script do gerador
-COPY generate_fixed_database.py ./
+COPY generators/generate_fixed_database.py ./
 
 # Define o comando padrão
 CMD ["python", "generate_fixed_database.py"]

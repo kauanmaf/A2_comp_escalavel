@@ -21,7 +21,7 @@ HOTELS_PER_MINUTE = int(os.getenv('HOTELS_PER_MINUTE', '50000'))
 # Ranges baseados nos dados gerados pelo generate_fixed_database.py
 # Como foram geradas 50 cidades com 50-250 hotéis cada, temos aproximadamente 7000 hotéis
 HOTEL_ID_RANGE = (1, 7000)  # Range de IDs de hotéis
-VOO_ID_RANGE = (1, 1340000)  # Range de IDs de voos (aproximadamente 1.34M voos)
+VOO_ID_RANGE = (1, 1330000)  # Range de IDs de voos (aproximadamente 1.34M voos)
 
 # Configurações Redis
 REDIS_HOST = 'localhost'

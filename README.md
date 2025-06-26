@@ -29,24 +29,30 @@ git clone https://github.com/kauanmaf/A2_comp_escalavel
 cd A2_comp_escalavel
 ```
 
-### 2. Execute o sistema completo
+### 2. Crie um ambiente virtual (exemplo para linux)
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Execute o sistema completo
 ```bash
 docker-compose up
 ```
 
-### 3. Aguarde a inicialização (2-3 minutos)
+### 4. Aguarde a inicialização (2-3 minutos)
 ```bash
 # Monitore os logs (opicional)
 docker-compose logs -f
 ```
 
-### 4. Gere dados em tempo real (em um novo terminal)
+### 5. Gere dados em tempo real (em um novo terminal)
 ```bash
 # Em um novo terminal
 python mock_realtime_generator.py
 ```
 
-### 5. Acesse a interface (em um novo terminal)
+### 6. Acesse a interface (em um novo terminal)
 ```bash
 # Em um novo terminal
 streamlit run dashboard/dashboard.py

@@ -10,13 +10,13 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copia arquivo de requirements
-COPY requirements_api.txt .
+COPY api/requirements_api.txt .
 
 # Instala dependências Python
 RUN pip install --no-cache-dir -r requirements_api.txt
 
 # Copia o código da aplicação
-COPY api_stats.py .
+COPY api/api_stats.py .
 
 # Expõe a porta 8000
 EXPOSE 8000

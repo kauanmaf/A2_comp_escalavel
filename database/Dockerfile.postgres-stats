@@ -8,8 +8,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Cria um script de inicialização personalizado
-COPY init-postgres-stats.sh /docker-entrypoint-initdb.d/00-init-postgres-stats.sh
-COPY dados_stats_ini.sql /docker-entrypoint-initdb.d/01-dados_stats_ini.sql
+COPY database/init-postgres-stats.sh /docker-entrypoint-initdb.d/00-init-postgres-stats.sh
+COPY database/sql/dados_stats_ini.sql /docker-entrypoint-initdb.d/01-dados_stats_ini.sql
 
 # Torna o script executável
 RUN chmod +x /docker-entrypoint-initdb.d/00-init-postgres-stats.sh
