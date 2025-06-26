@@ -30,7 +30,7 @@ services:
     environment:
       S3_PREFIX_HOTEIS: master_data/hoteis/
       S3_PREFIX_VOOS: master_data/voos/
-      PG_DATA_HOST: a2-comp-escalavel-dados-fixos.col2wfyf2csx.us-east-1.rds.amazonaws.com
+      PG_DATA_HOST: a2-comp-escalavel-dados-fixos.cc8vrjfinrxj.us-east-1.rds.amazonaws.com
       PG_DATA_PORT: 5432
       PG_DATA_DB: postgres
       PG_DATA_USER: A2CompEscalavel
