@@ -14,134 +14,223 @@ def get_pg_connection():
     )
 
 
-def upsert_statistics(conn, table_name, key_columns, value_columns, row):
-    """
-    Realiza UPSERT com lock por company_id
-
-    Args:
-        conn: Conexão PostgreSQL
-        table_name: Nome da tabela
-        key_columns: Lista de colunas chave (além de company_id)
-        value_columns: Lista de colunas de valores para atualizar
-        row: Dicionário com dados da linha
-    """
-    company_id = row["company_id"]
-    key_values = [row[col] for col in key_columns]
-    value_values = [row[col] for col in value_columns]
-
-    # Adquire lock por company_id para evitar concorrência
-    with conn.cursor() as cursor:
-        try:
-            cursor.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (company_id,))
-
-            # Inserção com ON CONFLICT para upsert eficiente
-            all_columns = ["company_id"] + key_columns + value_columns
-            all_values = [company_id] + key_values + value_values
-
-            insert_query = sql.SQL(
-                """
-                INSERT INTO {table} ({fields})
-                VALUES ({placeholders})
-                ON CONFLICT ({conflict_cols})
-                DO UPDATE SET {update_assignments}
-            """
-            ).format(
-                table=sql.Identifier(table_name),
-                fields=sql.SQL(", ").join(map(sql.Identifier, all_columns)),
-                placeholders=sql.SQL(", ").join([sql.Placeholder()] * len(all_columns)),
-                conflict_cols=sql.SQL(", ").join(
-                    map(sql.Identifier, ["company_id"] + key_columns)
-                ),
-                update_assignments=sql.SQL(", ").join(
-                        sql.Identifier(col)
-                        + sql.SQL(" = COALESCE(")
-                        + sql.Identifier(table_name)  # <--- Re-add table_name qualifier here
-                        + sql.SQL(".")
-                        + sql.Identifier(col)
-                        + sql.SQL(", 0) + EXCLUDED.")
-                        + sql.Identifier(col)
-                        for col in value_columns
-                    ),
-            )
-            cursor.execute(insert_query, all_values)
-        except Exception as e:
-            conn.rollback()
-            raise e
-
-
-# Mapeamento de tabelas e suas configurações
-TABLE_CONFIG = {
-    "stats_month_hotel": {
+# Mapeamento de tabelas e suas configurações (agora mapeando para staging)
+STAGING_TABLE_CONFIG = {
+    "staging_stats_month_hotel": {
         "key_columns": ["mes_reserva"],
         "value_columns": ["sum_valor"],
     },
-    "stats_city_hotel": {"key_columns": ["cidade"], "value_columns": ["sum_valor"]},
-    "stats_month_voos": {
+    "staging_stats_city_hotel": {
+        "key_columns": ["cidade"],
+        "value_columns": ["sum_valor"]
+    },
+    "staging_stats_month_voos": {
         "key_columns": ["mes_reserva"],
         "value_columns": ["sum_valor"],
     },
-    "stats_city_voos": {
+    "staging_stats_city_voos": {
         "key_columns": ["cidade_destino"],
         "value_columns": ["sum_valor"],
     },
-    "stats_faturamentos_totais": {
+    "staging_stats_faturamentos_totais": {
         "key_columns": ["mes_reserva"],
         "value_columns": ["total_valor"],
     },
-    "stats_ticket_medio": {
+    "staging_stats_ticket_medio": {
         "key_columns": ["cidade_destino"],
         "value_columns": ["sum_valor", "num_transacoes"],
     },
-    "stats_stars_hotel": {
+    "staging_stats_stars_hotel": {
         "key_columns": ["estrelas"],
         "value_columns": ["num_reservas"],
     },
-    "stats_estrelas_medias_mes": {
+    "staging_stats_estrelas_medias_mes": {
         "key_columns": ["mes_reserva"],
         "value_columns": ["sum_estrelas", "num_reservas"],
     },
-    "stats_month_sp_voos": {
+    "staging_stats_month_sp_voos": {
         "key_columns": ["mes"],
         "value_columns": ["num_voos_reservados"],
     },
-    "stats_day_sp_voos": {
+    "staging_stats_day_sp_voos": {
         "key_columns": ["data_reserva"],
         "value_columns": ["num_reservas"],
     },
 }
 
+# Mapeamento das tabelas originais para staging
+TABLE_TO_STAGING = {
+    "stats_month_hotel": "staging_stats_month_hotel",
+    "stats_city_hotel": "staging_stats_city_hotel",
+    "stats_month_voos": "staging_stats_month_voos",
+    "stats_city_voos": "staging_stats_city_voos",
+    "stats_faturamentos_totais": "staging_stats_faturamentos_totais",
+    "stats_ticket_medio": "staging_stats_ticket_medio",
+    "stats_stars_hotel": "staging_stats_stars_hotel",
+    "stats_estrelas_medias_mes": "staging_stats_estrelas_medias_mes",
+    "stats_month_sp_voos": "staging_stats_month_sp_voos",
+    "stats_day_sp_voos": "staging_stats_day_sp_voos",
+}
+
 
 def save_stats_dataframe(df, table_name):
     """
-    Recebe um DataFrame do Spark contendo estatísticas processadas e faz upsert na tabela Postgres indicada.
-    Se a linha não existir, insere; caso exista, atualiza somando o novo valor ao existente.
-    Usa Spark foreachPartition para execução eficiente e advisory lock por company_id.
+    Recebe um DataFrame do Spark contendo estatísticas processadas e insere os dados
+    na tabela de staging correspondente de forma otimizada usando inserção em lote.
+
+    Args:
+        df: DataFrame do Spark com os dados processados
+        table_name: Nome da tabela original (ex: 'stats_month_hotel')
+                   Será convertido automaticamente para staging (ex: 'staging_stats_month_hotel')
     """
-    config = TABLE_CONFIG.get(table_name)
+    # Converte o nome da tabela original para staging
+    staging_table_name = TABLE_TO_STAGING.get(table_name)
+    if not staging_table_name:
+        raise ValueError(f"Mapeamento não encontrado para tabela: {table_name}")
+
+    # Obtém a configuração da tabela de staging
+    config = STAGING_TABLE_CONFIG.get(staging_table_name)
     if not config:
-        raise ValueError(f"Configuração não encontrada para tabela: {table_name}")
+        raise ValueError(f"Configuração não encontrada para tabela de staging: {staging_table_name}")
 
-    def _upsert_partition(rows):
-        conn = get_pg_connection()
-        try:
-            for row in rows:
-                data = row.asDict()
-                upsert_statistics(
-                    conn=conn,
-                    table_name=table_name,
-                    key_columns=config["key_columns"],
-                    value_columns=config["value_columns"],
-                    row=data,
+    # Coleta todos os dados do DataFrame para Python
+    rows_data = df.collect()
+
+    if not rows_data:
+        # print(f"Nenhum dado para inserir na tabela {staging_table_name}", flush=True)
+        return
+
+    # Prepara os dados para inserção em lote
+    all_columns = ["company_id"] + config["key_columns"] + config["value_columns"]
+    batch_data = []
+
+    for row in rows_data:
+        data = row.asDict()
+        company_id = data["company_id"]
+        key_values = [data[col] for col in config["key_columns"]]
+        value_values = [data[col] for col in config["value_columns"]]
+        batch_data.append([company_id] + key_values + value_values)
+
+    # Insere todos os dados em uma única transação
+    conn = get_pg_connection()
+    try:
+        conn.autocommit = False
+
+        with conn.cursor() as cursor:
+            # Inserção em lote usando executemany para máxima performance
+            insert_query = sql.SQL(
+                """
+                INSERT INTO {staging_table} ({fields})
+                VALUES ({placeholders})
+                """
+            ).format(
+                staging_table=sql.Identifier(staging_table_name),
+                fields=sql.SQL(", ").join(map(sql.Identifier, all_columns)),
+                placeholders=sql.SQL(", ").join([sql.Placeholder()] * len(all_columns))
+            )
+
+            cursor.executemany(insert_query, batch_data)
+
+        conn.commit()
+        # print(f"Inseridos {len(batch_data)} registros na tabela {staging_table_name}", flush=True)
+
+    except Exception as e:
+        conn.rollback()
+        # print(f"Erro ao inserir dados na staging {staging_table_name}: {str(e)}", flush=True)
+        raise e
+    finally:
+        conn.close()
+
+
+def get_staging_status():
+    """
+    Retorna o status das tabelas de staging - quantos registros estão pendentes de processamento.
+    Útil para monitoramento e debug.
+
+    Returns:
+        dict: Dicionário com o nome da tabela e quantidade de registros não processados
+    """
+    conn = get_pg_connection()
+    status = {}
+
+    try:
+        with conn.cursor() as cursor:
+            for staging_table in STAGING_TABLE_CONFIG.keys():
+                cursor.execute(
+                    sql.SQL("SELECT COUNT(*) FROM {table} WHERE processed = FALSE").format(
+                        table=sql.Identifier(staging_table)
+                    )
                 )
+                count = cursor.fetchone()[0]
+                status[staging_table] = count
 
+    except Exception as e:
+        print(f"Erro ao verificar status das tabelas de staging: {str(e)}", flush=True)
+        raise e
+    finally:
+        conn.close()
+
+    return status
+
+
+def force_process_staging():
+    """
+    Força o processamento das tabelas de staging executando a função
+    processar_todas_estatisticas() manualmente.
+
+    Útil para testes e processamento imediato quando necessário.
+
+    Returns:
+        bool: True se executado com sucesso
+    """
+    conn = get_pg_connection()
+
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT processar_todas_estatisticas()")
             conn.commit()
-        except Exception as e:
-            conn.rollback()
-            raise e
-        finally:
-            conn.close()
+            # print("Processamento manual das estatísticas executado com sucesso", flush=True)
+            return True
 
-    # Reparticiona o DataFrame por company_id para garantir que cada partição contenha dados de uma mesma company_id
-    repart_df = df.repartition("company_id")
-    # Executa upsert em cada partição de forma paralela pelo Spark
-    repart_df.foreachPartition(_upsert_partition)
+    except Exception as e:
+        conn.rollback()
+        print(f"Erro ao executar processamento manual: {str(e)}", flush=True)
+        raise e
+    finally:
+        conn.close()
+
+
+def save_pipeline_execution_log(
+    start_time,
+    end_time,
+    rows_hotels,
+    rows_flights,
+    spark_duration_seconds,
+    db_write_duration_seconds
+):
+    conn = get_pg_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO pipeline_execution_log (
+                    start_time, end_time, rows_hotels, rows_flights,
+                    spark_duration_seconds, db_write_duration_seconds
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    start_time,
+                    end_time,
+                    rows_hotels,
+                    rows_flights,
+                    spark_duration_seconds,
+                    db_write_duration_seconds,
+                ),
+            )
+            conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"Erro ao salvar log de execução da pipeline: {str(e)}", flush=True)
+        raise e
+    finally:
+        conn.close()

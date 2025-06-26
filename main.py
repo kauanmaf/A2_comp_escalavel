@@ -79,14 +79,13 @@ stat_request_schema = StructType([
 global_spark_session = None
 global_redis_client = None
 
-THREASHOLD = 100
-
 # Variáveis de ambiente para conexão com o RDS
 PG_MASTER_HOST = os.getenv('PG_MASTER_HOST', 'a2-comp-escalavel-dados-fixos.col2wfyf2csx.us-east-1.rds.amazonaws.com')
 PG_MASTER_PORT = int(os.getenv('PG_MASTER_PORT', 5432))
 PG_MASTER_DB = os.getenv('PG_MASTER_DB', 'postgres')
 PG_MASTER_USER = os.getenv('PG_MASTER_USER', 'A2CompEscalavel')
 PG_MASTER_PASSWORD = os.getenv('PG_MASTER_PASSWORD', 'euadoroaemap')
+THRESHOLD = os.getenv('THRESHOLD', 10000)
 
 if __name__ == "__main__":
     spark = SparkSession.builder \
@@ -119,7 +118,7 @@ if __name__ == "__main__":
             total_rows = list_size_hoteis + list_size_voos
             print(f"Verificando listas: Tamanho atual Hoteis = {list_size_hoteis}, Voos = {list_size_voos}. Total = {total_rows}")
 
-            if total_rows >= THREASHOLD:
+            if total_rows >= THRESHOLD:
                 print(f"Threshold atingido! Processando {total_rows} registros.")
 
                 # --- INÍCIO CAPTURA DE TEMPO E QUANTIDADES ---
@@ -303,7 +302,7 @@ if __name__ == "__main__":
                 else:
                     print(f"Nenhum dado válido para criar DataFrame.")
             else:
-                print(f"Não há dados suficientes para atingir o threshold. Total: {total_rows}, Threshold: {THREASHOLD}")
+                print(f"Não há dados suficientes para atingir o threshold. Total: {total_rows}, Threshold: {THRESHOLD}")
                 time.sleep(5)
 
     except redis.exceptions.ConnectionError as e:
