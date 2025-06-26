@@ -13,7 +13,7 @@ Sistema distribuído para processamento e análise de dados de reservas de voos 
 - **FastAPI**: API REST para consulta de estatísticas
 - **Gerador de Dados**: Simulador de reservas em tempo real
 
-## ⚙️ Pré-requisitos
+## Pré-requisitos
 
 - **Docker**
 - **Docker Compose**
@@ -21,7 +21,7 @@ Sistema distribuído para processamento e análise de dados de reservas de voos 
 - **8GB+ RAM**
 - **16GB+ espaço em disco**
 
-## 🚀 Início Rápido
+## Início Rápido
 
 ### 1. Clone o repositório
 ```bash
@@ -58,7 +58,7 @@ python mock_realtime_generator.py
 streamlit run dashboard/dashboard.py
 ```
 
-## 🔧 Execução detalhada
+## Execução detalhada
 
 ### Execução Passo a Passo
 
@@ -79,7 +79,7 @@ docker-compose up -d stats-api
 python mock_realtime_generator.py
 ```
 
-## 📊 Geração de Dados
+## Geração de Dados
 
 ### Dados Fixos (Executado Automaticamente)
 
@@ -110,7 +110,7 @@ export HOTELS_PER_MINUTE=30000
 python mock_realtime_generator.py
 ```
 
-## 🌐 APIs Disponíveis
+## APIs Disponíveis
 
 ### FastAPI - Estatísticas (Porta 8000)
 
@@ -153,7 +153,7 @@ http://localhost:8000/stats/ticket_medio
 http://localhost:8000/stats/month_hotel_count
 ```
 
-## 🔄 Como Regenerar Dados Fixos
+## Como Regenerar Dados Fixos
 
 ### Opção 1: Regenerar os Dados Fixos
 ```bash
@@ -170,7 +170,7 @@ docker-compose build --no-cache data-generator
 docker-compose up -d
 ```
 
-## 📈 Monitoramento
+## Monitoramento
 
 ### Logs dos Serviços
 ```bash
