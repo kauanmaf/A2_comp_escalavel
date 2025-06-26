@@ -1,0 +1,12 @@
+FROM python:3.9-slim-buster
+
+# Define o diretório de trabalho dentro do contêiner
+WORKDIR /app
+
+# Copia os scripts Python necessários para o contêiner
+COPY mock_realtime_generator.py .
+
+# Instala as dependências do Redis
+RUN pip install --no-cache-dir redis
+
+CMD ["python", "mock_realtime_generator.py"]
