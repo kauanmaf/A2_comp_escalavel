@@ -125,7 +125,7 @@ if __name__ == "__main__":
                 pipeline_start_time = datetime.datetime.now(datetime.timezone.utc)
                 rows_hotels = list_size_hoteis
                 rows_flights = list_size_voos
-                spark_proc_start = time.perf_counter()
+                
                 # --- FIM CAPTURA DE TEMPO E QUANTIDADES ---
 
                 raw_messages_hoteis = global_redis_client.lrange("raw_hotels", 0, list_size_hoteis - 1)
@@ -213,7 +213,8 @@ if __name__ == "__main__":
                     df_voos_master = df_voos_master \
                         .withColumnRenamed("cidade_ida", "cidade_origem") \
                         .withColumnRenamed("cidade_volta", "cidade_destino")
-
+                    
+                    spark_proc_start = time.perf_counter()
                     joined_hotel = pf.join(df_hoteis_master, df_hoteis, "id_hotel")
                     all_stats_hotel = pf.groupby_city_month_hotels(joined_hotel)
 
