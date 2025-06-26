@@ -1,17 +1,27 @@
 # main.py
+print("Iniciando processo 1")
+
 from pyspark.sql import SparkSession
+print("Iniciando processo 2")
 from pyspark.sql.functions import from_json, col, count, sum, to_timestamp 
+print("Iniciando processo 3")
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType, IntegerType, LongType
+print("Iniciando processo 4")
 import os
 import redis
+print("Iniciando processo 5")
 import json
+print("Iniciando processo 6")
 import time
 import datetime
 import pipeline_functions as pf
+print("Iniciando processo 7")
 import psycopg2
+print("Iniciando processo 8")
 import threading
 import uuid
 import db_stats_utils
+print("Iniciando processo 9")
 
 # Definindo os esquemas para os dados aninhados
 flight_data_payload_schema = StructType([
@@ -80,7 +90,7 @@ global_spark_session = None
 global_redis_client = None
 
 # Variáveis de ambiente para conexão com o RDS
-PG_MASTER_HOST = os.getenv('PG_MASTER_HOST', 'a2-comp-escalavel-dados-fixos.col2wfyf2csx.us-east-1.rds.amazonaws.com')
+PG_MASTER_HOST = os.getenv('PG_MASTER_HOST', 'a2-comp-escalavel-dados-fixos.cc8vrjfinrxj.us-east-1.rds.amazonaws.com')
 PG_MASTER_PORT = int(os.getenv('PG_MASTER_PORT', 5432))
 PG_MASTER_DB = os.getenv('PG_MASTER_DB', 'postgres')
 PG_MASTER_USER = os.getenv('PG_MASTER_USER', 'A2CompEscalavel')
@@ -92,7 +102,7 @@ if __name__ == "__main__":
         .appName("TravelBatchProcessorPersistent") \
         .getOrCreate()
     
-    REDIS_HOST = os.getenv('REDIS_HOST', 'master.redis-brocker.slp5lw.use1.cache.amazonaws.com')
+    REDIS_HOST = os.getenv('REDIS_HOST', 'redis-broker.9qvzql.ng.0001.use1.cache.amazonaws.com')
     REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
     MONITOR_INTERVAL = int(os.getenv('MONITOR_INTERVAL_SECONDS', 5))
     

@@ -6,7 +6,7 @@ from psycopg2 import sql
 def get_pg_connection():
     """Cria conexão com o PostgreSQL usando variáveis de ambiente"""
     return psycopg2.connect(
-        host=os.getenv("PG_STATS_HOST", "a2-comp-escalavel-dados-estatisticas.col2wfyf2csx.us-east-1.rds.amazonaws.com"),
+        host=os.getenv("PG_STATS_HOST", "a2-comp-escalavel-dados-estatisticas.cc8vrjfinrxj.us-east-1.rds.amazonaws.com"),
         port=os.getenv("PG_STATS_PORT", "5432"),
         dbname=os.getenv("PG_STATS_DB", "postgres"),
         user=os.getenv("PG_STATS_USER", "A2CompEscalavel"),
